@@ -19,6 +19,12 @@ curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg -o /usr/share/keyri
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 sudo apt-get update
 sudo apt-get install -y mongodb-org
+
+# on linux, edit /etc/mongod.conf:
+net:
+  port: 27017
+  bindIp: 127.0.0.1,172.17.0.1
+
 sudo systemctl start mongod
 sudo systemctl enable mongod # run at boot
 ```
@@ -34,7 +40,8 @@ docker build -f cloud-bridge.Dockerfile -t phntm/cloud-bridge:latest .
 Create new config file `nano ~/cloud_bridge_config.jsonc` and paste:
 ```jsonc
 {
-    "dbUrl": "mongodb://host.docker.internal:27017",
+    # "dbUrl": "mongodb://host.docker.internal:27017", # Mac
+    "dbUrl": "mongodb://172.17.0.1:27017", # Linux
     "dieOnException": true,
 
     "BRIDGE": {
