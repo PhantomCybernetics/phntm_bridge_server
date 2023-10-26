@@ -2,8 +2,8 @@ FROM ubuntu:latest
 
 RUN apt-get update -y --fix-missing
 RUN apt-get install -y  ssh \
-                        vim mc \
-                        iputils-ping net-tools iproute2 curl
+                        vim mc git \
+                        iputils-ping net-tools iproute2 curl 
 
 # Node from NodeSource
 RUN apt-get install -y ca-certificates curl gnupg

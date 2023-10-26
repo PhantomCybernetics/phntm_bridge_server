@@ -9,7 +9,7 @@ services:
       - 1337:1337
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
-      - ~cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc
+      - ~/cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc
       #- ~/cloud_bridge:/phntm_cloud_bridge
     command:
       #/bin/sh -c "while sleep 1000; do :; done"

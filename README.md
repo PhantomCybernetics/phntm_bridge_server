@@ -32,7 +32,7 @@ docker build -f cloud-bridge.Dockerfile -t phntm/cloud-bridge:latest .
 
 ### Create Config File
 Create new config file `nano ~/cloud_bridge_config.jsonc` and paste:
-```jsons
+```jsonc
 {
     "dbUrl": "mongodb://host.docker.internal:27017",
     "dieOnException": true,
@@ -74,7 +74,7 @@ services:
       - 1337:1337
     volumes:
       - /etc/letsencrypt:/ssl
-      - ~cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc
+      - ~/cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc
     command:
       /bin/sh /phntm_cloud_bridge/run.bridge.sh
 ```
@@ -87,7 +87,7 @@ docker compose up phntm_cloud_bridge
 # Dev Mode
 Dev mode mapps live git repo on the host machine to the container so that you can make changes more conventinetly.
 ```
-dd ~
+cd ~
 git clone git@github.com:PhantomCybernetics/cloud_bridge.git cloud_bridge
 ```
 Make the following changes to your docker compose service in compose.yaml:
@@ -122,3 +122,5 @@ TODO
 ### Launch
 TODO
 
+# Socket.io API
+TODO
