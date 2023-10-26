@@ -1,5 +1,5 @@
 {
     "js/ts.implicitProjectConfig.strictNullChecks": false,
     "git.ignoreLimitWarning": true,
-    "workbench.colorTheme": "Default Dark Modern"
+    "workbench.colorTheme": "Solarized Dark"
 }

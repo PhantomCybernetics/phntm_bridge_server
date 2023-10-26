@@ -83,8 +83,8 @@ export function RegisterApp(req:express.Request, res:express.Response, set_passw
             });
 
             let new_config:any = {
-                id_app: appReg.insertedId.toString(),
-                key: set_password
+                appId: appReg.insertedId.toString(),
+                appKey: set_password
             };
 
             res.setHeader('Content-Type', 'application/json');

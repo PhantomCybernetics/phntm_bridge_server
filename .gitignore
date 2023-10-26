@@ -5,4 +5,4 @@ ssl/*.pem
 ssl/*.crt
 *.swp
 build/
-data/*
+db_data/*

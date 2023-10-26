@@ -1,7 +1,7 @@
 {
   "name": "phntm_cloud_bridge",
   "version": "0.0.1",
-  "description": "Bridge node for fast AR HRI and data visualizations",
+  "description": "Bridge node for fast AR HRI and Data visualizations",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -29,9 +29,6 @@
   },
   "homepage": "https://github.com/PhantomCybernetics/phntm_cloud_bridge#readme",
   "dependencies": {
-    "@foxglove/message-definition": "^0.3.0",
-    "@foxglove/rosmsg": "^4.2.2",
-    "@foxglove/rosmsg2-serialization": "^2.0.2",
     "@types/ejs": "^3.1.2",
     "@types/express": "^4.17.17",
     "@types/js-yaml": "^4.0.5",

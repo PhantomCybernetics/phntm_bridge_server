@@ -1,6 +1,0 @@
-{
-  "extends": "./common",
-  "include": [
-    "../src/WebUIServer.ts"
-  ]
-}
