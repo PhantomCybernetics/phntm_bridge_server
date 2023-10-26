@@ -40,8 +40,7 @@ docker build -f cloud-bridge.Dockerfile -t phntm/cloud-bridge:latest .
 Create new config file `nano ~/cloud_bridge_config.jsonc` and paste:
 ```jsonc
 {
-    "dbUrl": "mongodb://172.17.0.1:27017", // Linux
-    // "dbUrl": "mongodb://host.docker.internal:27017", // Mac
+    "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
     "dieOnException": true,
 
     "BRIDGE": {
