@@ -8,7 +8,7 @@ CODE=$?;
 if [ $CODE -eq 0 ] ; then
 	echo -e "\033[32m[tsc good, launching Cloud Bridge Node...]\033[0m"
 	clear
-	node ./build/Bridge.js "$@"
+	node ./build/CloudBridge.js "$@"
 else
 	echo -e "\033[41m[TypeScript errors detected, launch cancelled]\033[0m"
 fi
