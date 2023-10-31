@@ -117,16 +117,4 @@ npm install # necessary on the first run from new source!
 
 # TURN Server
 This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT.
-
-### Install coturn
-```
-sudo apt install coturn
-```
-### Configure
-TODO
-
-### Launch
-TODO
-
-# Socket.io API
-TODO
+https://help.hcltechsw.com/sametime/11.6/admin/turnserver_ubuntu.html
