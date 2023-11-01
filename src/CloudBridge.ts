@@ -3,7 +3,7 @@ const startupTime:number = Date.now();
 import { Debugger } from './lib/debugger';
 const $d:Debugger = Debugger.Get('[Cloud Bridge]');
 
-import { RegisterRobot, RegisterApp, GetCerts, UncaughtExceptionHandler } from './lib/helpers'
+import { RegisterRobot, GetDefaultRobotConfig, RegisterApp, GetCerts, UncaughtExceptionHandler } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const fs = require('fs');
 import * as C from 'colors'; C; //force import typings with string prototype extension
@@ -194,9 +194,17 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 });
 
 sioExpressApp.get('/robot/register', async function(req:express.Request, res:express.Response) {
+
+    if (req.query.id !== undefined || req.query.key !== undefined) {
+
+        return GetDefaultRobotConfig(req, res, 
+            robotsCollection, PUBLIC_ADDRESS, SIO_PORT);
+
+    }
+    
     return RegisterRobot(
-        req, res, new ObjectId().toString(),
-        robotsCollection, PUBLIC_ADDRESS, SIO_PORT
+        req, res, new ObjectId().toString(), //new key generated here
+        robotsCollection
     );
 });
 

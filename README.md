@@ -117,4 +117,46 @@ npm install # necessary on the first run from new source!
 
 # TURN Server
 This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT.
-https://help.hcltechsw.com/sametime/11.6/admin/turnserver_ubuntu.html
+
+```bash
+sudo apt-get -y install coturn
+sudo vim /etc/default/coturn
+# TURNSERVER_ENABLED=1
+
+sudo cp /etc/turnserver.conf /etc/turnserver.conf.bak
+sudo vim /etc/turnserver.conf
+```
+
+Paste this:
+```conf
+listening-port=3478
+tls-listening-port=5349
+alt-listening-port=3479
+alt-tls-listening-port=5350
+external-ip=54.67.121.238/172.31.11.252
+min-port=32355
+max-port=65535
+server-name=turn.phntm.io
+# TODO: these will be appId:key, robotId:key pairs from Mongo
+user=robo:pass
+user=app:pass
+realm=phntm.io
+cert=/path/to/cert.pem
+pkey=/path/to/privkey.pem
+cipher-list="DEFAULT"
+ec-curve-name=prime256v1
+log-file=/var/tmp/turn.log
+cli-password=*CLI_PASS*
+```
+
+```
+sudo systemctl start coturn
+sudo systemctl enable coturn # start on boot
+```
+
+# Registering a new Robot via REST API
+
+Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration yaml file for phntm_bridge. This uses the robot_confif.templ.yaml as a template. 
+
+Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot but returns json.
+
