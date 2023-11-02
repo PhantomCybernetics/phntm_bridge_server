@@ -2,7 +2,7 @@ import { Debugger } from "./debugger";
 const $d:Debugger = Debugger.Get();
 
 import * as SocketIO from "socket.io";
-import { ObjectId } from 'mongodb';
+import { Collection, ObjectId } from 'mongodb';
 import { App } from './app'
 
 export class RobotSocket extends SocketIO.Socket {
@@ -16,12 +16,17 @@ export class Robot {
     isConnected: boolean;
     isAuthentificated: boolean;
     socket: RobotSocket;
+    timeConnected:Date;
 
     nodes: any[];
     topics: any[];
     services: any[];
     docker_containers: any[];
     cameras: any[];
+
+    static LOG_EVENT_CONNECT: number = 1;
+    static LOG_EVENT_DISCONNECT: number = 0;
+    static LOG_EVENT_ERR: number = -1;
 
     introspection: boolean;
 
@@ -167,6 +172,49 @@ export class Robot {
                 // $d.l('emitting docker to app', robotDockerContainersData);
                 app.socket.emit('docker', robotDockerContainersData)
             }
+        });
+    }
+
+    public logConnect(robotsCollection:Collection, robotLogsCollection:Collection):void {
+
+        this.timeConnected = new Date();
+        robotsCollection.updateOne({_id: this.id_robot},
+                                   { $set: {
+                                        name: this.name,
+                                        last_connected: this.timeConnected,
+                                        last_ip: this.socket.handshake.address,
+                                    }, $inc: { total_sessions: 1 } });
+
+        robotLogsCollection.insertOne({
+            id: this.id_robot,
+            stamp: this.timeConnected,
+            event: Robot.LOG_EVENT_CONNECT,
+            ip: this.socket.handshake.address
+        });
+
+    }
+
+    public logDisconnect(robotsCollection:Collection, robotLogsCollection:Collection, ev:number = Robot.LOG_EVENT_DISCONNECT, cb?:any):void {
+
+        let numTasks = 2;
+        let now:Date = new Date();
+        let session_length_min:number = Math.abs(now.getTime() - this.timeConnected.getTime())/1000.0/60.0;
+        robotsCollection.updateOne({_id: this.id_robot},
+                                   { $inc: { total_time_h: session_length_min/60.0 } })
+        .finally(()=>{
+            numTasks--;
+            if (!numTasks && cb) return cb();
+        });
+
+        robotLogsCollection.insertOne({
+            id: this.id_robot,
+            stamp: new Date(),
+            event: ev,
+            session_length_min: session_length_min,
+            ip: this.socket.handshake.address
+        }).finally(()=>{
+            numTasks--;
+            if (!numTasks && cb) return cb();
         });
     }
 

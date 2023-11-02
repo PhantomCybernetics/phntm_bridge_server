@@ -4,16 +4,16 @@ This server fascilitates WebRTC P2P conenction of a Phantom Bridge node running 
 
 The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration.
 
-Cloud Bridge also relies messages between peers using Socket.io, when reliability is required, such as in case of WebRTC signalling, introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server.
+Cloud Bridge also relies messages between peers using Socket.io, when reliability is required, such as in the case of WebRTC signalling, introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server.
 
 # Install
 ### Install Docker & Docker Compose
-```
+```bash
 sudo apt install docker docker-buildx docker-compose-v2
 ```
 
 ### Install MongoDB
-```
+```bash
 sudo apt-get install gnupg curl
 curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
@@ -29,43 +29,40 @@ sudo systemctl start mongod
 sudo systemctl enable mongod # run at boot
 ```
 
-### Build the Docker Image
-```
+### Build the Docker image
+```bash
 cd ~
 wget https://raw.githubusercontent.com/PhantomCybernetics/cloud_bridge/main/dev.Dockerfile -O cloud-bridge.Dockerfile
 docker build -f cloud-bridge.Dockerfile -t phntm/cloud-bridge:latest .
 ```
 
-### Create Config File
-Create new config file `nano ~/cloud_bridge_config.jsonc` and paste:
+### Create a config file
+Create a new config file `vim ~/cloud_bridge_config.jsonc` and paste:
 ```jsonc
 {
-    "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
-    "dieOnException": true,
+  "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
+  "dieOnException": true,
 
-    "BRIDGE": {
-        "ssl": {
-            // certificates need to be exposed to the docker container
-            // use certbot or the ssl/gen.sh script for self signed dev certificates
-            "private": "/ssl/private.pem",
-            "public": "/ssl/public.crt"
-        },
-        "sioPort": 1337, # socket.io port of this server
-        "address": "https://bridge.phntm.io", # address of this server
-        "uiAddressPrefix": "https://bridge.phntm.io/", # full previx for UI links
-        
-        "admin": { // credentials required for password-protected APIs on here
-		    "username": "admin",
-		    "password": "**********"
-	    },
-
-        "verbose": false,
-        "keepSessionsLoadedForMs": 30000 //30s, then unload
-    }
+  "BRIDGE": {
+      "ssl": {
+          // certificates need to be exposed to the docker container
+          // use certbot or the ssl/gen.sh script for self signed dev certificates
+          "private": "/ssl/private.pem",
+          "public": "/ssl/public.crt"
+      },
+      "sioPort": 1337, # socket.io port of this server
+      "address": "https://bridge.phntm.io", # address of this server
+      "uiAddressPrefix": "https://bridge.phntm.io/", # full previx for UI links
+      
+      "admin": { // credentials required for password-protected APIs on here
+      "username": "admin",
+      "password": "**********"
+    },
+  }
 }
 ```
 
-### Add Service to your compose.yaml
+### Add Bridge service to your compose.yaml
 ```yaml
 services:
   phntm_cloud_bridge:
@@ -82,21 +79,21 @@ services:
       - /etc/letsencrypt:/ssl
       - ~/cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc
     command:
-      /bin/sh /phntm_cloud_bridge/run.bridge.sh
+      [  /bin/sh,  /phntm_cloud_bridge/run.bridge.sh ]
 ```
 
 ### Launch
-```
+```bash
 docker compose up phntm_cloud_bridge
 ```
 
-# Dev Mode
-Dev mode mapps live git repo on the host machine to the container so that you can make changes more conventinetly.
-```
+# Dev mode
+Dev mode mapps live git repo on the host machine to the container so that you can make changes more conventinetly. First clone this repo...
+```bash
 cd ~
 git clone git@github.com:PhantomCybernetics/cloud_bridge.git cloud_bridge
 ```
-Make the following changes to your docker compose service in compose.yaml:
+Then make the following changes to your Docker Compose service in compose.yaml:
 ```yaml
 services:
   phntm_cloud_bridge:
@@ -106,17 +103,16 @@ services:
       /bin/sh -c "while sleep 1000; do :; done"
 ```
 
-Launch server manually for better control:
-```
+Launch server manually for better developer experience:
+```bash
 docker compose up phntm_cloud_bridge -d
 docker exec -it phntm-cloud-bridge bash
 npm install # necessary on the first run from new source!
 ./run.web-ui.sh
 ```
 
-
 # TURN Server
-This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT.
+This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT, which is about 20 % of times.
 
 ```bash
 sudo apt-get -y install coturn
@@ -149,14 +145,14 @@ log-file=/var/tmp/turn.log
 cli-password=*CLI_PASS*
 ```
 
-```
+```bash
 sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot
 ```
 
 # Registering a new Robot via REST API
 
-Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration yaml file for phntm_bridge. This uses the robot_confif.templ.yaml as a template. 
+Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration yaml file for phntm_bridge. This uses robot_config.templ.yaml as a template. 
 
-Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot but returns json.
+Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot, but returns json.
 

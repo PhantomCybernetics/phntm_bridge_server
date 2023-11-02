@@ -34,7 +34,6 @@ const DB_URL:string = CONFIG.dbUrl;
 const SSL_CERT_PRIVATE =  CONFIG['BRIDGE'].ssl.private;
 const SSL_CERT_PUBLIC =  CONFIG['BRIDGE'].ssl.public;
 const DIE_ON_EXCEPTION:boolean = CONFIG.dieOnException;
-const VERBOSE:boolean = CONFIG['BRIDGE'].verbose;
 const certFiles:string[] = GetCerts(SSL_CERT_PRIVATE, SSL_CERT_PUBLIC);
 const HTTPS_SERVER_OPTIONS = {
     key: fs.readFileSync(certFiles[0]),
@@ -59,6 +58,7 @@ console.log('-------------------------------------------------------------------
 let db:Db = null;
 let humansCollection:Collection = null;
 let robotsCollection:Collection = null;
+let robotLogsCollection:Collection = null;
 let appsCollection:Collection = null;
 
 const sioExpressApp = express();
@@ -222,6 +222,7 @@ mongoClient.connect().then((client:MongoClient) => {
     db = client.db('phntm');
     humansCollection = db.collection('humans');
     robotsCollection = db.collection('robots');
+    robotLogsCollection = db.collection('robot_logs');
     appsCollection = db.collection('apps');
 
     sioHttpServer.listen(SIO_PORT);
@@ -275,7 +276,7 @@ sioRobots.use(async(robotSocket:RobotSocket, next) => {
 
 sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
-    let robot:Robot = new Robot()
+    let robot:Robot = new Robot();
     robot.id_robot = robotSocket.dbData._id;
     robot.name = robotSocket.handshake.auth.name ?
                     robotSocket.handshake.auth.name :
@@ -284,15 +285,17 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     $d.log(('Ohi, robot '+robot.name+' aka '+robot.id_robot.toString()+' connected to Socket.io').cyan);
 
     robot.isAuthentificated = true;
+    let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
+    robot.socket = robotSocket;
 
     robot.isConnected = true;
+    robot.logConnect(robotsCollection, robotLogsCollection);
 
     robot.topics = [];
     robot.services = [];
     robot.cameras = [];
     robot.docker_containers = [];
     robot.introspection = false;
-    robot.socket = robotSocket;
 
     robot.addToConnected(); //sends update to subscribers
 
@@ -390,12 +393,16 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         robot.isConnected = false;
         robot.topics = null;
         robot.services = null;
-        robot.socket = null;
-        robot.removeFromConnected(!shuttingDown);
+        robot.logDisconnect(robotsCollection, robotLogsCollection, disconnectEvent, () => {
+            robot.socket = null;
+            robot.removeFromConnected(!shuttingDown);
+        });
     });
 
     robotSocket.on('disconnecting', (reason:any) => {
-        $d.l(('Socket disconnecting from robot: '+reason).gray);
+        $d.l(('Disconnecting socket for robot: '+reason).gray);
+        disconnectEvent = Robot.LOG_EVENT_ERR;
+        // robot.logDisconnect(robotsCollection, robotLogsCollection, Robot.LOG_EVENT_ERR);
     });
 
 });
@@ -794,11 +801,24 @@ process.on('uncaughtException', (err:any) => {
     }
 } );
 
-process.on('SIGINT', (code:any) => {
-    $d.log("Worker exiting...");
+['SIGINT', 'SIGTERM', 'SIGQUIT' ]
+  .forEach(signal => process.on(signal, () => {
+    $d.log("Server exiting...");
     _Clear();
     ShutdownWhenClear();
-});
+}));
+
+// process.on('SIGINT', (code:any) => {
+//     $d.log("Worker exiting...");
+//     _Clear();
+//     ShutdownWhenClear();
+// });
+
+// process.on('SIGTERM', (code:any) => {
+//     $d.log("Worker exiting...");
+//     _Clear();
+//     ShutdownWhenClear();
+// });
 
 let shuttingDown:boolean = false;
 function _Clear() {
@@ -812,6 +832,12 @@ function _Clear() {
     sioApps.close();
 }
 
-function ShutdownWhenClear() {
+function ShutdownWhenClear():void {
+    if (Robot.connectedRobots.length) {
+        $d.l('Waiting for '+Robot.connectedRobots.length+' robots to clear...');
+        setTimeout(() => ShutdownWhenClear(), 1000);
+        return;
+    }
+    $d.l('Exit... ')
     process.exit(0);
 }
