@@ -162,7 +162,7 @@ log-file=/var/tmp/turn.log
 cli-password=*CLI_PASS*
 ```
 
-Note that in this cofiguation, the following ports must be open for inboud connections:
+Note that in this cofiguration, the following ports must be open to inboud traffic:
 ```
 TCP	5349-5350
 UDP	3478-3479
