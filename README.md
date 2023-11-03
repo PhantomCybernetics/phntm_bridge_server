@@ -162,6 +162,13 @@ log-file=/var/tmp/turn.log
 cli-password=*CLI_PASS*
 ```
 
+Note that in this cofiguation, the following ports must be open for inboud connections:
+```
+TCP	5349-5350
+UDP	3478-3479
+UDP	32355-65535
+```
+
 Run coturn:
 ```bash
 sudo systemctl start coturn
