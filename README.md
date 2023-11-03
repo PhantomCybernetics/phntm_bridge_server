@@ -121,7 +121,7 @@ Calling https://bridge.phntm.io:1337/robot/register?json also registers a new ro
 
 ### Registering a new App
 
-Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. This API is password protected until we have better UI. Individual Web UI forks and other services using this API should be considered individual apps.
+Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. Individual Web UI forks and other services using this API should be considered individual apps.
 
 ### Server status
 
@@ -129,7 +129,7 @@ https://bridge.phntm.io:1337/info (password protected)
 
 
 # TURN Server
-This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT, which is about 20 % of times.
+This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT (~20 % of times)
 
 ```bash
 sudo apt-get -y install coturn
@@ -162,6 +162,7 @@ log-file=/var/tmp/turn.log
 cli-password=*CLI_PASS*
 ```
 
+Run coturn:
 ```bash
 sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot
