@@ -121,11 +121,11 @@ Calling https://bridge.phntm.io:1337/robot/register?json also registers a new ro
 
 ### Registering a new App
 
-Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. This API is password protected until we have better UI. Individual Web UI forks should be at some point considered unique apps, reach out to discuss this if this is your case.
+Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. This API is password protected until we have better UI. Individual Web UI forks and other services using this API should be considered individual apps.
 
 ### Server status
 
-https://bridge.phntm.io:1337/info (password protected)
+https://bridge.phntm.io:1337/info (password protected)  
 
 
 # TURN Server
@@ -166,6 +166,3 @@ cli-password=*CLI_PASS*
 sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot
 ```
-
-
-

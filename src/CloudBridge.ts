@@ -3,7 +3,7 @@ const startupTime:number = Date.now();
 import { Debugger } from './lib/debugger';
 const $d:Debugger = Debugger.Get('[Cloud Bridge]');
 
-import { RegisterRobot, GetDefaultRobotConfig, RegisterApp, GetCerts, UncaughtExceptionHandler } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const fs = require('fs');
 import * as C from 'colors'; C; //force import typings with string prototype extension
@@ -43,16 +43,13 @@ const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
 
 console.log('-----------------------------------------------------------------------'.yellow);
-console.log(' PHNTM BRIDGE NODE'.yellow);
+console.log(' PHNTM CLOUD BRIDGE'.yellow);
 console.log('');
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/info                     System info JSON').yellow);
+console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/info                     System info').yellow);
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/socket.io/         Robot API').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?yaml      Register new robot').green);
-console.log(('                                                          & download config YAML/JSON').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/human/socket.io/         Human API').red);
+console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?yaml      Register new robot (YAML/JSON)').green);
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/socket.io/           App API').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register             Register new App').green);
-console.log('');
+console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register             Register new App (JSON)').green);
 console.log('----------------------------------------------------------------------'.yellow);
 
 let db:Db = null;
@@ -150,7 +147,7 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 
     let appsData = [];
     for (let i = 0; i < App.connectedApps.length; i++) {
-        let id_app:string = (App.connectedApps[i].id_app as ObjectId).toString();
+        let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
 
         let subs = [];
         if (App.connectedApps[i].robotSubscriptions) {
@@ -161,14 +158,14 @@ sioExpressApp.get('/info', function(req: any, res: any) {
                     peers_subscribed_to_robot[id_robot] = [];
                 peers_subscribed_to_robot[id_robot].push({
                     id: id_app,
-                    inst: App.connectedApps[i].id_instance.toString()
+                    inst: App.connectedApps[i].idInstance.toString()
                 });
             }
         }
 
         appsData.push({
             'id': id_app,
-            'inst': App.connectedApps[i].id_instance,
+            'inst': App.connectedApps[i].idInstance,
             'ip': App.connectedApps[i].socket.handshake.address,
             'subscriptions': subs
 	    });
@@ -176,7 +173,7 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 
     let robotsData = [];
     for (let i = 0; i < Robot.connectedRobots.length; i++) {
-        let id_robot:string = (Robot.connectedRobots[i].id_robot as ObjectId).toString();
+        let id_robot:string = (Robot.connectedRobots[i].idRobot as ObjectId).toString();
         let ui_url = UI_ADDRESS_PREFIX+id_robot;
         robotsData.push({
             'id': id_robot,
@@ -196,21 +193,25 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 sioExpressApp.get('/robot/register', async function(req:express.Request, res:express.Response) {
 
     if (req.query.id !== undefined || req.query.key !== undefined) {
-
-        return GetDefaultRobotConfig(req, res, 
+        return Robot.GetDefaultConfig(req, res, 
             robotsCollection, PUBLIC_ADDRESS, SIO_PORT);
-
     }
     
-    return RegisterRobot(
+    return Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
         robotsCollection
     );
 });
 
 sioExpressApp.get('/app/register', async function(req:express.Request, res:express.Response) {
-    return RegisterApp(
-        req, res, new ObjectId().toString(),
+
+    if (req.query.id !== undefined || req.query.key !== undefined) {
+        return App.GetDefaultConfig(req, res, 
+            appsCollection, PUBLIC_ADDRESS, SIO_PORT);
+    }
+
+    return App.Register(
+        req, res, new ObjectId().toString(), //new key generated here
         appsCollection
     );
 });
@@ -277,12 +278,12 @@ sioRobots.use(async(robotSocket:RobotSocket, next) => {
 sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
     let robot:Robot = new Robot();
-    robot.id_robot = robotSocket.dbData._id;
+    robot.idRobot = robotSocket.dbData._id;
     robot.name = robotSocket.handshake.auth.name ?
                     robotSocket.handshake.auth.name :
                         (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
 
-    $d.log(('Ohi, robot '+robot.name+' aka '+robot.id_robot.toString()+' connected to Socket.io').cyan);
+    $d.log(('Ohi, robot '+robot.name+' aka '+robot.idRobot.toString()+' connected to Socket.io').cyan);
 
     robot.isAuthentificated = true;
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
@@ -310,9 +311,9 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         delete update_data['id_instance']
         update_data = robot.getStateData(update_data)
 
-        $d.l("Got peer:update from "+robot.id_robot+" for peer "+id_app+"/"+id_instance+": ", update_data);
+        $d.l("Got peer:update from "+robot.idRobot+" for peer "+id_app+"/"+id_instance+": ", update_data);
         let app = App.FindConnected(id_app, id_instance);
-        if (app && app.isSubscribedToRobot(robot.id_robot)) {
+        if (app && app.isSubscribedToRobot(robot.idRobot)) {
             app.socket.emit('robot:update', update_data, (app_answer:any) => {
                 return_callback(app_answer);
             });
@@ -326,7 +327,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.id_robot, nodes);
+        $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot, nodes);
         robot.nodes = nodes;
         robot.NodesToSubscribers();
     });
@@ -336,7 +337,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+topics.length+' topics from '+robot.id_robot, topics);
+        $d.l('Got '+topics.length+' topics from '+robot.idRobot, topics);
         robot.topics = topics;
         robot.TopicsToSubscribers();
     });
@@ -346,7 +347,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+services.length+' services from '+robot.id_robot, services);
+        $d.l('Got '+services.length+' services from '+robot.idRobot, services);
         robot.services = services;
         robot.ServicesToSubscribers();
     });
@@ -356,7 +357,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+Object.keys(cameras).length+' cameras from '+robot.id_robot, cameras);
+        $d.l('Got '+Object.keys(cameras).length+' cameras from '+robot.idRobot, cameras);
         robot.cameras = cameras;
         robot.CamerasToSubscribers();
     });
@@ -366,7 +367,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+containers.length+' Docker containers from '+robot.id_robot, containers);
+        $d.l('Got '+containers.length+' Docker containers from '+robot.idRobot, containers);
         robot.docker_containers = containers;
         robot.DockerContainersToSubscribers();
     });
@@ -376,7 +377,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l("Got introspection state from "+robot.id_robot+": "+state);
+        $d.l("Got introspection state from "+robot.idRobot+": "+state);
 
         robot.introspection = state;
 
@@ -455,17 +456,17 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     $d.log('Connected w id_instance: ', appSocket.handshake.auth.id_instance);
 
     let app:App = new App(appSocket.handshake.auth.id_instance); //id instance generated in constructor, if not provided
-    app.id_app = new ObjectId(appSocket.handshake.auth.id_app)
+    app.idApp = new ObjectId(appSocket.handshake.auth.id_app)
     app.name = appSocket.dbData.name;
     app.socket = appSocket;
     app.isConnected = true;
     app.robotSubscriptions = [];
 
-    $d.log(('Ohi, app '+app.name+' aka '+app.id_app.toString()+' (inst '+app.id_instance.toString()+') connected to Socket.io').cyan);
+    $d.log(('Ohi, app '+app.name+' aka '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') connected to Socket.io').cyan);
 
     app.addToConnected();
 
-    appSocket.emit('instance', app.id_instance.toString());
+    appSocket.emit('instance', app.idInstance.toString());
 
     appSocket.on('robot', async function (data:{id_robot:string, read?:string[], write?:string[][]}, returnCallback) {
         $d.log('Peer app requesting robot: ', data);
@@ -497,8 +498,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             });
         }
 
-        app.subscribeRobot(robot.id_robot, data.read, data.write);
-        robot.init_peer(app, data.read, data.write, returnCallback);
+        app.subscribeRobot(robot.idRobot, data.read, data.write);
+        robot.initPeer(app, data.read, data.write, returnCallback);
     });
 
     function ProcessForwardRequest(app:App, data:{ id_robot:string, id_app?:string, id_instance?:string}, returnCallback:any):Robot|boolean {
@@ -525,8 +526,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         delete data['id_robot'];
-        data['id_app'] = app.id_app.toString();
-        data['id_instance'] = app.id_instance.toString();
+        data['id_app'] = app.idApp.toString();
+        data['id_instance'] = app.idInstance.toString();
 
         return robot;
     }
@@ -587,7 +588,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.addToRobotSubscriptions(robot.id_robot, data.sources, null)
+        app.addToRobotSubscriptions(robot.idRobot, data.sources, null)
 
         robot.socket.emit('subscribe', data, (resData:any) => {
 
@@ -615,7 +616,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.addToRobotSubscriptions(robot.id_robot, null, data.sources)
+        app.addToRobotSubscriptions(robot.idRobot, null, data.sources)
 
         robot.socket.emit('subscribe:write', data, (resData:any) => {
 
@@ -643,7 +644,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.removeFromRobotSubscriptions(robot.id_robot, data.sources, null);
+        app.removeFromRobotSubscriptions(robot.idRobot, data.sources, null);
 
         robot.socket.emit('unsubscribe', data, (resData:any) => {
 
@@ -670,7 +671,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.removeFromRobotSubscriptions(robot.id_robot, null, data.sources);
+        app.removeFromRobotSubscriptions(robot.idRobot, null, data.sources);
 
         robot.socket.emit('unsubscribe:write', data, (resData:any) => {
 
@@ -751,8 +752,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             let robot = Robot.FindConnected(id_robot);
             if (robot && robot.socket) {
                 robot.socket.emit('peer:disconnected', {
-                    id_app: app.id_app.toString(),
-                    id_instance: app.id_instance.toString()
+                    id_app: app.idApp.toString(),
+                    id_instance: app.idInstance.toString()
                 });
             }
         }
