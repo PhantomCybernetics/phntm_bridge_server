@@ -1,10 +1,10 @@
 # Phantom Cloud Bridge
 
-This server fascilitates WebRTC P2P conenction of a Phantom Bridge node running on a robot, and the Bridge UI app, or similar client using this API.
+This server fascilitates WebRTC P2P conenction between a Phantom Bridge node running on a robot, and the Bridge UI app, or any similar clients using this API.
 
 The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration.
 
-Cloud Bridge also relies messages between peers using Socket.io, when reliability is required, such as in the case of WebRTC signalling, introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server.
+Cloud Bridge also relies messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server.
 
 # Install
 ### Install Docker & Docker Compose
@@ -52,9 +52,9 @@ Create a new config file `vim ~/cloud_bridge_config.jsonc` and paste:
       },
       "sioPort": 1337, # socket.io port of this server
       "address": "https://bridge.phntm.io", # address of this server
-      "uiAddressPrefix": "https://bridge.phntm.io/", # full previx for UI links
+      "uiAddressPrefix": "https://bridge.phntm.io/", # full prefix for UI links
       
-      "admin": { // credentials required for password-protected APIs on here
+      "admin": { // credentials required for password-protected APIs here
       "username": "admin",
       "password": "**********"
     },
@@ -111,6 +111,23 @@ npm install # necessary on the first run from new source!
 ./run.web-ui.sh
 ```
 
+# REST API
+
+### Registering a new Robot
+
+Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration yaml file for phntm_bridge. This uses robot_config.templ.yaml as a template. 
+
+Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot, but returns json.
+
+### Registering a new App
+
+Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. This API is password protected until we have better UI. Individual Web UI forks should be at some point considered unique apps, reach out to discuss this if this is your case.
+
+### Server status
+
+https://bridge.phntm.io:1337/info (password protected)
+
+
 # TURN Server
 This is often a good place to run a TURN server as a backup when p2p connection is not available due to restrictive NAT, which is about 20 % of times.
 
@@ -150,9 +167,5 @@ sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot
 ```
 
-# Registering a new Robot via REST API
 
-Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration yaml file for phntm_bridge. This uses robot_config.templ.yaml as a template. 
-
-Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot, but returns json.
 

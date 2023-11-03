@@ -680,33 +680,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         });
     });
 
-    // appSocket.on('cameras:read', async function (data:{ id_robot:string, cameras:[string, number][]}, returnCallback) {
-
-    //     $d.log('App requesting robot camera access with:', data);
-
-    //     let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-    //     if (!robot)
-    //         return;
-
-    //     if (!data.cameras) {
-    //         if (returnCallback) {
-    //             returnCallback({
-    //                 'err': 1,
-    //                 'msg': 'Invalid subscription data'
-    //             })
-    //         }
-    //         return;
-    //     }
-
-    //     robot.socket.emit('cameras:read', data, (resData:any) => {
-
-    //         $d.log('Got robot\'s camera subscription answer:', resData);
-
-    //         return returnCallback(resData);
-    //     });
-
-    // });
-
     appSocket.on('sdp:answer', async function (data:{ id_robot:string, sdp:string}, returnCallback) {
         $d.log('App sending sdp answer with:', data);
 
@@ -731,7 +704,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return returnCallback(resData);
         });
     });
-
 
 
     appSocket.on('service', async function (data:{ id_robot:string, service:string, msg:any}, returnCallback) {
@@ -791,7 +763,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     });
 });
 
-
 //error handling & shutdown
 process.on('uncaughtException', (err:any) => {
     UncaughtExceptionHandler(err, false);
@@ -803,29 +774,16 @@ process.on('uncaughtException', (err:any) => {
 
 ['SIGINT', 'SIGTERM', 'SIGQUIT' ]
   .forEach(signal => process.on(signal, () => {
-    $d.log("Server exiting...");
     _Clear();
     ShutdownWhenClear();
 }));
-
-// process.on('SIGINT', (code:any) => {
-//     $d.log("Worker exiting...");
-//     _Clear();
-//     ShutdownWhenClear();
-// });
-
-// process.on('SIGTERM', (code:any) => {
-//     $d.log("Worker exiting...");
-//     _Clear();
-//     ShutdownWhenClear();
-// });
 
 let shuttingDown:boolean = false;
 function _Clear() {
     if (shuttingDown) return;
     shuttingDown = true;
 
-    $d.log("Cleaning up...");
+    $d.log("Server exiting, cleaning up...");
 
     sioRobots.close();
     sioHumans.close();
@@ -838,6 +796,6 @@ function ShutdownWhenClear():void {
         setTimeout(() => ShutdownWhenClear(), 1000);
         return;
     }
-    $d.l('Exit... ')
+    $d.l('Shutdown clear, exiting...')
     process.exit(0);
 }
