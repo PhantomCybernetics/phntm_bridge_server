@@ -11,7 +11,7 @@
     sio_address: %SIO_ADDRESS%
     sio_path: %SIO_PATH%
     sio_port: %SIO_PORT%
-    sio_ssl_verify: True
+    sio_ssl_verify: False # !! TODO trust phntm certs
     sio_connection_retry_sec: 5.0
     ice_servers:
       - 'turn:turn.phntm.io:3478'
@@ -42,6 +42,7 @@
     iw_monitor_topic: '/iw_status' # writes output here
 
     #PiCamera config
+    picam_enabled: False #enable to use Pi camera modules
     # picam_hflip: False
     # picam_vflip: False
     # picam_bitrate: 5000000
