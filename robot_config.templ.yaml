@@ -30,7 +30,13 @@
 
     topic_overrides:
       - /robot_description
+      - /tf_static
     /robot_description:
+      durability: 1 # TRANSIENT_LOCAL
+      raw: true
+      reliability: 1 # RELIABLE
+      lifespan: -1 # INFINITY
+    /tf_static:
       durability: 1 # TRANSIENT_LOCAL
       raw: true
       reliability: 1 # RELIABLE
