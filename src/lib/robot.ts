@@ -60,7 +60,7 @@ export class Robot {
         }
         let that = this;
         $d.log('Calling robot:peer with data', data);
-        this.socket.emit('peer', data, (answerData:{state?: any, offer:string }) => {
+        this.socket.emit('peer', data, (answerData:any) => {
 
             if (!app.socket)
                 return;
@@ -68,6 +68,7 @@ export class Robot {
             $d.log('Got robot\'s answer:', answerData);
 
             answerData = this.getStateData(answerData);
+            answerData['files_fw_secret'] = app.filesSecret.toString();
 
             if (returnCallback) {
                 returnCallback(answerData);
@@ -110,6 +111,7 @@ export class Robot {
 
         data['id_robot'] = this.idRobot.toString()
         data['name'] =  this.name ? this.name : 'Unnamed Robot';
+    
         if (this.socket)
             data['ip'] =  this.socket.conn.remoteAddress; //no ip = robot offline
         data['introspection'] = this.introspection;

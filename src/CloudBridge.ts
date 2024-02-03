@@ -5,7 +5,9 @@ const $d:Debugger = Debugger.Get('[Cloud Bridge]');
 
 import { GetCerts, UncaughtExceptionHandler } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
+const crypto = require('crypto')
 const fs = require('fs');
+const path = require('path');
 import * as C from 'colors'; C; //force import typings with string prototype extension
 const _ = require('lodash');
 const https = require('https');
@@ -28,6 +30,12 @@ import * as JSONC from 'comment-json';
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
 const SIO_PORT:number = CONFIG['BRIDGE'].sioPort;
+const FILES_PORT:number = CONFIG['BRIDGE'].filesPort;
+const FILES_CACHE_DIR:string = CONFIG['BRIDGE'].filesCacheDir;
+if (!fs.existsSync(FILES_CACHE_DIR)) {
+    $d.e('Files cache dir not found: '+FILES_CACHE_DIR);
+    process.exit();
+};
 const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix;
 const PUBLIC_ADDRESS:string = CONFIG['BRIDGE'].address;
 const DB_URL:string = CONFIG.dbUrl;
@@ -60,6 +68,105 @@ let appsCollection:Collection = null;
 
 const sioExpressApp = express();
 const sioHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, sioExpressApp);
+
+const filesApp = express();
+const filesHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, filesApp);
+
+filesApp.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, PUT");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    next();
+});
+
+filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
+
+    let auth_ok = false;
+    for (let i = 0; i < App.connectedApps.length; i++) {
+        let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
+        if (req.params.SECRET == App.connectedApps[i].filesSecret.toString()) {
+            auth_ok = true;
+            break;
+        }
+    };
+
+    let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
+
+    if (!auth_ok) {    
+        $d.e('Access to file fw denied '+req.params.FILE_URL+'; secret='+req.params.SECRET+'; IP='+remote_ip);
+        return res.sendStatus(403); //access denied
+    }
+
+    if (!req.params.ID_ROBOT || !ObjectId.isValid(req.params.ID_ROBOT)) {
+        $d.e('Invalid id robot in file request:', req.params);
+        return res.sendStatus(400); //bad request
+    }
+    let id_robot = new ObjectId(req.params.ID_ROBOT);
+    let robot = Robot.FindConnected(id_robot);
+    if (!robot || !robot.socket) {
+        $d.e('Error seding cached file, robot '+id_robot+' not connected');
+        return res.sendStatus(502); //bad gateway
+    }
+    $d.l(('Forwarding '+req.params.FILE_URL+'; id_robot='+id_robot).cyan);
+
+    let base = path.basename(req.params.FILE_URL)
+    let ext = path.extname(req.params.FILE_URL);
+    let hash = crypto.createHash('md5').update(req.params.FILE_URL).digest("hex");
+    let fname_cache = hash+'-'+base;
+    let path_cache = FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache;
+
+    try {
+        await fs.promises.access(path_cache, fs.constants.R_OK);
+        $d.l(fname_cache+' found in cache');
+
+        return res.sendFile(path_cache, {}, function (err) {
+            if (err) {
+                $d.e('Error seding cached file '+path_cache, err);
+                return res.sendStatus(500); // internal server error
+            } else {
+                $d.l('Sent: ' + path_cache)
+            }
+          })
+
+    } catch (err) {
+        $d.l(fname_cache+' not found in cache');
+        //check/make folder
+        try {
+            await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
+            // The check succeeded
+        } catch (error) {
+            // The check failed
+            $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
+            try {
+                await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
+            } catch (error) {
+                $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), error);
+                return res.sendStatus(500); // internal server error
+            }
+        }
+        //fetch the file from robot
+        $d.l('Fetching from robot... ');
+
+        return robot.socket.emit('file', req.params.FILE_URL, (robot_res:any) => {
+
+            if (!robot_res || robot_res.err){
+                $d.l('Robot returned error... ', robot_res);
+                return res.sendStatus(503);
+            }
+
+            //TODO write file to cache here
+            
+            return res.sendStatus(402);
+        });
+    }
+
+    
+
+    // res.setHeader('Content-Type', 'text/html');
+    // res.send('yo! '+req.params.FILE_URL);
+
+    // let ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string
+});
 
 function auth_admin(req:any) {
     const authorization = req.headers.authorization;
@@ -227,7 +334,8 @@ mongoClient.connect().then((client:MongoClient) => {
     appsCollection = db.collection('apps');
 
     sioHttpServer.listen(SIO_PORT);
-    $d.l(('Socket.io listening on port '+SIO_PORT).green);
+    filesHttpServer.listen(FILES_PORT);
+    $d.l(('Socket.io listening on port '+SIO_PORT+', file forwarder on '+FILES_PORT).green);
 }).catch(()=>{
     $d.err("Error connecting to", DB_URL);
     process.exit();

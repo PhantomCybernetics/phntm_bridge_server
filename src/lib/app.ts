@@ -15,6 +15,7 @@ export class AppSocket extends SocketIO.Socket {
 export class App {
     idApp: ObjectId;
     idInstance: ObjectId;
+    filesSecret: ObjectId;
     name: string;
     isConnected: boolean;
     isAuthentificated: boolean;
@@ -30,6 +31,7 @@ export class App {
     constructor(idInstance?:string) {
         //generates new instance id if undefined
         this.idInstance = new ObjectId(idInstance);
+        this.filesSecret = new ObjectId();
     }
 
     static FindConnected(idApp:ObjectId, idInstance:ObjectId):App {
