@@ -32,7 +32,7 @@ const CONFIG = _.merge(defaultConfig);
 const SIO_PORT:number = CONFIG['BRIDGE'].sioPort;
 const FILES_PORT:number = CONFIG['BRIDGE'].filesPort;
 const FILES_CACHE_DIR:string = CONFIG['BRIDGE'].filesCacheDir;
-if (!fs.existsSync(FILES_CACHE_DIR)) {
+if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
     $d.e('Files cache dir not found: '+FILES_CACHE_DIR);
     process.exit();
 };
@@ -113,59 +113,73 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
     let ext = path.extname(req.params.FILE_URL);
     let hash = crypto.createHash('md5').update(req.params.FILE_URL).digest("hex");
     let fname_cache = hash+'-'+base;
-    let path_cache = FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache;
+    
+    let path_cache = FILES_CACHE_DIR ? FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache : null;
 
-    try {
-        await fs.promises.access(path_cache, fs.constants.R_OK);
-        $d.l(fname_cache+' found in cache');
-
-        return res.sendFile(path_cache, {}, function (err) {
-            if (err) {
-                $d.e('Error seding cached file '+path_cache, err);
-                return res.sendStatus(500); // internal server error
-            } else {
-                $d.l('Sent: ' + path_cache)
-            }
-          })
-
-    } catch (err) {
-        $d.l(fname_cache+' not found in cache');
-        //check/make folder
+    if (FILES_CACHE_DIR) {
+    
         try {
-            await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
-            // The check succeeded
-        } catch (error) {
-            // The check failed
-            $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
+            await fs.promises.access(path_cache, fs.constants.R_OK);
+            $d.l(fname_cache+' found in cache');
+    
+            return res.sendFile(path_cache, {}, function (err) {
+                if (err) {
+                    $d.e('Error seding cached file '+path_cache, err);
+                    return res.sendStatus(500); // internal server error
+                }
+                $d.l('Sent cached: ' + path_cache)
+            });
+    
+        } catch (err) {
+            $d.l(fname_cache+' not found in cache');
+
+            // check cache folder
             try {
-                await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
+                await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
             } catch (error) {
-                $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), error);
-                return res.sendStatus(500); // internal server error
+                try {
+                    $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
+                    await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
+                } catch (error) {
+                    if (error.code != 'EEXIST') { // created since first check
+                        $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), error);
+                        return res.sendStatus(500); // not caching but should => internal server error
+                    }
+                }
             }
         }
-        //fetch the file from robot
-        $d.l('Fetching from robot... ');
-
-        return robot.socket.emit('file', req.params.FILE_URL, (robot_res:any) => {
-
-            if (!robot_res || robot_res.err){
-                $d.l('Robot returned error... ', robot_res);
-                return res.sendStatus(503);
-            }
-
-            //TODO write file to cache here
-            
-            return res.sendStatus(402);
-        });
     }
-
     
+    // fetch the file from robot
+    $d.l('Fetching from robot... ');
 
-    // res.setHeader('Content-Type', 'text/html');
-    // res.send('yo! '+req.params.FILE_URL);
+    return robot.socket.emit('file', req.params.FILE_URL, (robot_res:any) => {
 
-    // let ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string
+        if (!robot_res || robot_res.err){
+            $d.e('Robot returned error... ', robot_res);
+            return res.sendStatus(404); // not found
+        }
+
+        $d.l('Robot returned '+robot_res.length+' B');
+
+        if (FILES_CACHE_DIR) {
+            $d.l('  caching into '+path_cache);
+            fs.open(path_cache, 'w', null, (err:any, fd:any)=>{
+                if (err) {
+                    $d.e('Failed to open cache file for writing: '+path_cache);
+                    return;
+                }
+                fs.write(fd, robot_res, null, (err:any, bytesWritten:number) => {
+                    if (err) {
+                        $d.e('Failed to write cache file: '+err);
+                    }
+                    fs.closeSync(fd)
+                });
+            });
+        }
+        
+        return res.send(robot_res)
+    });
 });
 
 function auth_admin(req:any) {
