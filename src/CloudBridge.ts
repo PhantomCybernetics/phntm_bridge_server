@@ -211,7 +211,8 @@ const sioRobots:SocketIO.Server = new SocketIO.Server(
     sioHttpServer, {
         pingInterval: 10000,
         pingTimeout: 60*1000,
-        path: "/robot/socket.io/"
+        path: "/robot/socket.io/",
+        maxHttpBufferSize: 1e7 //allow 10MB for big file uploads
     }
 );
 
