@@ -82,6 +82,9 @@ export class Robot {
                 });
             }
 
+            if (!app.socket)
+                return;
+
             app.socket.emit('nodes', this.AddId(this.nodes));
             app.socket.emit('topics', this.AddId(this.topics));
             app.socket.emit('services', this.AddId(this.services));

@@ -72,6 +72,10 @@ const sioHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, sioExpressApp);
 const filesApp = express();
 const filesHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, filesApp);
 
+process.on('uncaughtException', function(err) {
+    $d.e('Caught unhandled exception: ', err);
+});
+
 filesApp.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, PUT");
@@ -123,11 +127,15 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
             $d.l(fname_cache+' found in cache');
     
             return res.sendFile(path_cache, {}, function (err) {
-                if (err) {
-                    $d.e('Error seding cached file '+path_cache, err);
-                    return res.sendStatus(500); // internal server error
+                try {
+                    if (err) {
+                        $d.e('Error seding cached file '+path_cache, err);
+                        return res.sendStatus(500); // internal server error
+                    }
+                    $d.l('Sent cached: ' + path_cache)
+                } catch (err1) {
+                    $d.l('Exception caught and ignored', err1);
                 }
-                $d.l('Sent cached: ' + path_cache)
             });
     
         } catch (err) {
@@ -136,13 +144,13 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
             // check cache folder
             try {
                 await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
-            } catch (error) {
+            } catch (err1) {
                 try {
                     $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
                     await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
-                } catch (error) {
-                    if (error.code != 'EEXIST') { // created since first check
-                        $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), error);
+                } catch (err2) {
+                    if (err2.code != 'EEXIST') { // created since first check
+                        $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), err2);
                         return res.sendStatus(500); // not caching but should => internal server error
                     }
                 }
