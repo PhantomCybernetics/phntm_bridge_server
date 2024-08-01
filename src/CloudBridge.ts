@@ -869,9 +869,9 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     /*
      * client disconnected
      */
-    appSocket.on('disconnect', (data:any) => {
+    appSocket.on('disconnect', (msg:any) => {
 
-        $d.l(('Socket disconnect for app: '+data).red);
+        $d.l(('Socket disconnected for app'+app.idApp.toString()+' (inst '+app.idInstance.toString()+'): '+msg).red);
 
         app.isAuthentificated = false;
         app.isConnected = false;
