@@ -20,6 +20,7 @@ export class App {
     isConnected: boolean;
     isAuthentificated: boolean;
     socket: AppSocket;
+    servedMsgDefs:string[] = [];
     robotSubscriptions: {
         id_robot: ObjectId,
         read?:string[],
@@ -55,6 +56,7 @@ export class App {
 
     public removeFromConnected() {
         let index = App.connectedApps.indexOf(this);
+        this.servedMsgDefs = []; // reset
         if (index != -1) {
             App.connectedApps.splice(index, 1);
         }

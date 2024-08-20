@@ -86,8 +86,10 @@ filesApp.use((req, res, next) => {
 filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
 
     let auth_ok = false;
+    let app:App = null;
     for (let i = 0; i < App.connectedApps.length; i++) {
         let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
+        app = App.connectedApps[i];
         if (req.params.SECRET == App.connectedApps[i].filesSecret.toString()) {
             auth_ok = true;
             break;
@@ -111,7 +113,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
         $d.e('Error seding cached file, robot '+id_robot+' not connected');
         return res.sendStatus(502); //bad gateway
     }
-    $d.l(('Forwarding '+req.params.FILE_URL+'; id_robot='+id_robot).cyan);
+    $d.l(('App #'+app.idApp.toString()+' inst #'+app.idInstance.toString()+' reguested '+req.params.FILE_URL+' for robot #'+id_robot).cyan);
 
     let base = path.basename(req.params.FILE_URL)
     let ext = path.extname(req.params.FILE_URL);
@@ -124,7 +126,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
     
         try {
             await fs.promises.access(path_cache, fs.constants.R_OK);
-            $d.l(fname_cache+' found in cache');
+            $d.l(path_cache+' found in cache');
     
             return res.sendFile(path_cache, {}, function (err) {
                 try {
@@ -453,6 +455,20 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         }
     });
 
+    robotSocket.on('idls', async function(idls:any[]) {
+
+        if (!robot.isAuthentificated || !robot.isConnected)
+            return;
+
+        let msg_types:string[] = Object.keys(idls);
+        $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types:', msg_types);
+        robot.idls = idls;
+
+        robot.processIdls(()=>{ //on complete
+            robot.msgDefsToSubscribers();
+        });
+    });
+
     robotSocket.on('nodes', async function(nodes:any) {
 
         if (!robot.isAuthentificated || !robot.isConnected)
@@ -460,7 +476,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot, nodes);
         robot.nodes = nodes;
-        robot.NodesToSubscribers();
+        robot.nodesToSubscribers();
     });
 
     robotSocket.on('topics', async function(topics:any[]) {
@@ -470,7 +486,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l('Got '+topics.length+' topics from '+robot.idRobot, topics);
         robot.topics = topics;
-        robot.TopicsToSubscribers();
+        robot.topicsToSubscribers();
     });
 
     robotSocket.on('services', async function(services:any[]) {
@@ -480,7 +496,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l('Got '+services.length+' services from '+robot.idRobot, services);
         robot.services = services;
-        robot.ServicesToSubscribers();
+        robot.servicesToSubscribers();
     });
 
     robotSocket.on('cameras', async function(cameras:any[]) {
@@ -490,7 +506,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l('Got '+Object.keys(cameras).length+' cameras from '+robot.idRobot, cameras);
         robot.cameras = cameras;
-        robot.CamerasToSubscribers();
+        robot.camerasToSubscribers();
     });
 
     robotSocket.on('docker', async function(containers:any[]) {
@@ -500,7 +516,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l('Got '+containers.length+' Docker containers from '+robot.idRobot, containers);
         robot.docker_containers = containers;
-        robot.DockerContainersToSubscribers();
+        robot.dockerContainersToSubscribers();
     });
 
     robotSocket.on('introspection', async function(state:boolean) {
@@ -512,7 +528,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         robot.introspection = state;
 
-        robot.IntrospectionToSubscribers();
+        robot.introspectionToSubscribers();
     });
 
     /*

@@ -10,6 +10,9 @@ const bcrypt = require('bcrypt-nodejs');
 import * as express from "express";
 const fs = require('fs');
 
+import { parseRos2idl } from "@foxglove/rosmsg";
+import { MessageDefinition } from "@foxglove/message-definition";
+
 export class RobotSocket extends SocketIO.Socket {
     dbData?: any;
 }
@@ -23,6 +26,8 @@ export class Robot {
     socket: RobotSocket;
     timeConnected:Date;
 
+    idls: any = {}; // message defs in .idl fomrat extracted from the robot
+    msg_defs: any = {}; // processed js msg definitions 
     nodes: any[];
     topics: any[];
     services: any[];
@@ -85,24 +90,30 @@ export class Robot {
             if (!app.socket)
                 return;
 
-            app.socket.emit('nodes', this.AddId(this.nodes));
-            app.socket.emit('topics', this.AddId(this.topics));
-            app.socket.emit('services', this.AddId(this.services));
-            app.socket.emit('cameras', this.AddId(this.cameras));
-            app.socket.emit('docker', this.AddId(this.docker_containers));
+            $d.log('Intilizing peer #'+app.idInstance.toString()+'...');
+            this.pushMissingMsgDefsToPeer(app);
+            app.socket.emit('nodes', this.labelSubsciberData(this.nodes));
+            app.socket.emit('topics', this.labelSubsciberData(this.topics));
+            app.socket.emit('services', this.labelSubsciberData(this.services));
+            app.socket.emit('cameras', this.labelSubsciberData(this.cameras));
+            app.socket.emit('docker', this.labelSubsciberData(this.docker_containers));
         });
     }
 
     public removeFromConnected(notify:boolean = true) {
+        this.idls = []; // reset until fresh idls are provided
+        this.msg_defs = [];
         let index = Robot.connectedRobots.indexOf(this);
         if (index != -1) {
             Robot.connectedRobots.splice(index, 1);
             if (notify) {
                 let that = this;
                 App.connectedApps.forEach(app => {
-                    if (app.isSubscribedToRobot(this.idRobot)) {
-                        app.socket.emit('robot', that.getStateData()) //offline
-                    }
+                    if (!app.isSubscribedToRobot(this.idRobot))
+                        return;
+
+                    app.socket.emit('robot', that.getStateData()) // = robot offline
+                    app.servedMsgDefs = []; // reset
                 });
             }
         }
@@ -122,14 +133,66 @@ export class Robot {
         return data;
     }
 
-    public AddId(inData:any):any {
+    public labelSubsciberData(inData:any):any {
         let data:any = {};
         data[this.idRobot.toString()] = inData;
         return data;
     }
 
-    public NodesToSubscribers():void {
-        let robotNodesData = this.AddId(this.nodes);
+    public processIdls(onComplete?:any):void {
+
+        let msg_types:string[] = Object.keys(this.idls);
+        // let all_msg_defs:any[] = [];
+        let numProcessed = 0;
+        msg_types.forEach((msg_type:string)=>{
+            let idl:string = this.idls[msg_type];
+            let defs:MessageDefinition[] = parseRos2idl(idl); // for ROS 2 definitions
+            $d.l(msg_type+' -> '+defs.length+' defs:');
+            for (let k = 0; k < defs.length; k++) {
+                    let def = defs[k];
+                    let name:string = def.name;
+                    if (this.msg_defs[name])
+                        return; // only once per robot session
+                    $d.l(def);
+                    this.msg_defs[name] = def;
+                    numProcessed++;
+                }
+        });
+        
+        $d.l(('Processed idls into '+numProcessed+' msg_defs').yellow);
+
+        if (onComplete)
+            onComplete();
+    }
+
+    public pushMissingMsgDefsToPeer(app:App):void {
+        let missing_app_defs:any[] = [];
+        let def_types:string[] = Object.keys(this.msg_defs);
+        def_types.forEach((def_type:string)=>{
+            if (app.servedMsgDefs.indexOf(def_type) > -1)
+                return; // only sending each def once per session
+            app.servedMsgDefs.push(def_type);
+            missing_app_defs.push(this.msg_defs[def_type]);
+        });
+
+        if (missing_app_defs.length) {
+            let robotDefsData:any = this.labelSubsciberData(missing_app_defs);
+            $d.l('Pushing '+missing_app_defs.length+' defs to '+app, robotDefsData);
+            app.socket.emit('defs', robotDefsData);
+        }
+    }
+
+    public msgDefsToSubscribers():void {
+        
+        App.connectedApps.forEach(app => {
+            if (!app.isSubscribedToRobot(this.idRobot))
+                return;
+            this.pushMissingMsgDefsToPeer(app);
+        });
+    }
+
+    public nodesToSubscribers():void {
+        let robotNodesData = this.labelSubsciberData(this.nodes);
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 app.socket.emit('nodes', robotNodesData)
@@ -137,8 +200,8 @@ export class Robot {
         });
     }
 
-    public TopicsToSubscribers():void {
-        let robotTopicsData = this.AddId(this.topics);
+    public topicsToSubscribers():void {
+        let robotTopicsData = this.labelSubsciberData(this.topics);
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 app.socket.emit('topics', robotTopicsData)
@@ -146,8 +209,8 @@ export class Robot {
         });
     }
 
-    public ServicesToSubscribers():void {
-        let robotServicesData = this.AddId(this.services);
+    public servicesToSubscribers():void {
+        let robotServicesData = this.labelSubsciberData(this.services);
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 // $d.l('emitting services to app', robotServicesData);
@@ -156,8 +219,8 @@ export class Robot {
         });
     }
 
-    public CamerasToSubscribers():void {
-        let robotCamerasData = this.AddId(this.cameras);
+    public camerasToSubscribers():void {
+        let robotCamerasData = this.labelSubsciberData(this.cameras);
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 // $d.l('emitting cameras to app', robotCamerasData);
@@ -166,7 +229,7 @@ export class Robot {
         });
     }
 
-    public IntrospectionToSubscribers():void {
+    public introspectionToSubscribers():void {
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 // $d.l('emitting discovery state to app', discoveryOn);
@@ -175,8 +238,8 @@ export class Robot {
         });
     }
 
-    public DockerContainersToSubscribers():void {
-        let robotDockerContainersData = this.AddId(this.docker_containers);
+    public dockerContainersToSubscribers():void {
+        let robotDockerContainersData = this.labelSubsciberData(this.docker_containers);
         App.connectedApps.forEach(app => {
             if (app.isSubscribedToRobot(this.idRobot)) {
                 // $d.l('emitting docker to app', robotDockerContainersData);
