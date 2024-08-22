@@ -149,14 +149,13 @@ export class Robot {
             let defs:MessageDefinition[] = parseRos2idl(idl); // for ROS 2 definitions
             $d.l(msg_type+' -> '+defs.length+' defs:');
             for (let k = 0; k < defs.length; k++) {
-                    let def = defs[k];
-                    let name:string = def.name;
-                    if (this.msg_defs[name])
-                        return; // only once per robot session
-                    $d.l(def);
-                    this.msg_defs[name] = def;
-                    numProcessed++;
-                }
+                let def = defs[k];
+                if (this.msg_defs[def.name])
+                    continue; // only once per robot session
+                $d.l(def);
+                this.msg_defs[def.name] = def;
+                numProcessed++;
+            }
         });
         
         $d.l(('Processed idls into '+numProcessed+' msg_defs').yellow);
@@ -177,7 +176,7 @@ export class Robot {
 
         if (missing_app_defs.length) {
             let robotDefsData:any = this.labelSubsciberData(missing_app_defs);
-            $d.l('Pushing '+missing_app_defs.length+' defs to '+app, robotDefsData);
+            $d.l('Pushing '+missing_app_defs.length+' defs to '+app.idInstance.toString(), missing_app_defs);
             app.socket.emit('defs', robotDefsData);
         }
     }
