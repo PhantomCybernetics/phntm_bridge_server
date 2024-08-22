@@ -20,6 +20,7 @@ export class RobotSocket extends SocketIO.Socket {
 export class Robot {
     idRobot: ObjectId;
     name: string;
+    ros_distro: string;
     type: ObjectId;
     isConnected: boolean;
     isAuthentificated: boolean;
@@ -125,7 +126,8 @@ export class Robot {
 
         data['id_robot'] = this.idRobot.toString()
         data['name'] =  this.name ? this.name : 'Unnamed Robot';
-    
+        data['ros_distro'] =  this.ros_distro;
+
         if (this.socket)
             data['ip'] =  this.socket.conn.remoteAddress; //no ip = robot offline
         data['introspection'] = this.introspection;
@@ -253,6 +255,7 @@ export class Robot {
         robotsCollection.updateOne({_id: this.idRobot},
                                    { $set: {
                                         name: this.name,
+                                        ros_distro: this.ros_distro,
                                         last_connected: this.timeConnected,
                                         last_ip: this.socket.handshake.address,
                                     }, $inc: { total_sessions: 1 } });

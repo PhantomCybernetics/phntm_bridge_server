@@ -415,8 +415,9 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.name = robotSocket.handshake.auth.name ?
                     robotSocket.handshake.auth.name :
                         (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
+    robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '-';
 
-    $d.log(('Ohi, robot '+robot.name+' aka '+robot.idRobot.toString()+' connected to Socket.io').cyan);
+    $d.log(('Ohi, robot '+robot.name+' aka '+robot.idRobot.toString()+' ['+robot.ros_distro+'] connected to Socket.io').cyan);
 
     robot.isAuthentificated = true;
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
