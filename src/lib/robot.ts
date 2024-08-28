@@ -91,13 +91,15 @@ export class Robot {
             if (!app.socket)
                 return;
 
-            $d.log('Intilizing peer #'+app.idInstance.toString()+'...');
+            $d.log('Intilizing peer #'+app.idInstance.toString()+' with robot data of '+this.idRobot.toString());
             this.pushMissingMsgDefsToPeer(app);
             app.socket.emit('nodes', this.labelSubsciberData(this.nodes));
             app.socket.emit('topics', this.labelSubsciberData(this.topics));
             app.socket.emit('services', this.labelSubsciberData(this.services));
             app.socket.emit('cameras', this.labelSubsciberData(this.cameras));
             app.socket.emit('docker', this.labelSubsciberData(this.docker_containers));
+
+            this.peersToToSubscribers();
         });
     }
 
@@ -245,6 +247,24 @@ export class Robot {
             if (app.getRobotSubscription(this.idRobot)) {
                 // $d.l('emitting docker to app', robotDockerContainersData);
                 app.socket.emit('docker', robotDockerContainersData)
+            }
+        });
+    }
+
+    public peersToToSubscribers():void {
+        let peerData = {
+            num_connected: 0,
+            num_waiting: 0,
+        }
+        App.connectedApps.forEach(app => {
+            if (app.getRobotSubscription(this.idRobot)) {
+                peerData.num_connected++;
+            }
+        });
+        let robotPeerData = this.labelSubsciberData(peerData);
+        App.connectedApps.forEach(app => {
+            if (app.getRobotSubscription(this.idRobot)) {
+                app.socket.emit('robot_peers', robotPeerData)
             }
         });
     }

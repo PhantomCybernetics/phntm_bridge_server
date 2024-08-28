@@ -271,8 +271,8 @@ sioExpressApp.get('/info', function(req: any, res: any) {
         time: new Date(),
         numConnectedRobots: Robot.connectedRobots.length,
         numConnectedApps: App.connectedApps.length,
-	robots: [],
-	apps: [],
+        robots: [],
+        apps: [],
     };
 
     let peers_subscribed_to_robot:any = {}
@@ -657,7 +657,10 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         app.subscribeRobot(robot.idRobot, data.read, data.write);
-        robot.initPeer(app, data.read, data.write, returnCallback);
+        if (true) // TODO: check max peer number
+            robot.initPeer(app, data.read, data.write, returnCallback);
+        else
+            robot.peersToToSubscribers();
     });
 
     function ProcessForwardRequest(app:App, data:{ id_robot:string, id_app?:string, id_instance?:string}, returnCallback:any):Robot|boolean {
@@ -699,32 +702,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         robot.socket.emit('introspection', data, (answerData:any) => {
             $d.log('Got robot\'s introspection answer:', answerData);
-            return returnCallback(answerData);
-        });
-    });
-
-    appSocket.on('iw:scan', async function (data:{id_robot:string, roam?:boolean}, returnCallback) {
-        $d.log('App requesting robot wiri scan', data);
-
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot)
-            return;
-
-        robot.socket.emit('iw:scan', data, (answerData:any) => {
-            $d.log('Got robot\'s iw:scan answer:', answerData);
-            return returnCallback(answerData);
-        });
-    });
-
-    appSocket.on('docker', async function (data:{id_robot:string, container:boolean, msg:string}, returnCallback) {
-        $d.log('App calling robot docker container ', data);
-
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot)
-            return;
-
-        robot.socket.emit('docker', data, (answerData:any) => {
-            $d.log('Got robot\'s docker call reply:', answerData);
             return returnCallback(answerData);
         });
     });
@@ -933,6 +910,9 @@ sioApps.on('connect', async function(appSocket : AppSocket){
                     id_app: app.idApp.toString(),
                     id_instance: app.idInstance.toString()
                 });
+            }
+            if (robot) {
+                robot.peersToToSubscribers();
             }
         }
     });

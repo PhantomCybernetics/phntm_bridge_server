@@ -72,7 +72,6 @@ export class App {
                 this.robotSubscriptions[i].write = write;
                 return;
             }
-
         }
         this.robotSubscriptions.push({
             id_robot: idRobot,
