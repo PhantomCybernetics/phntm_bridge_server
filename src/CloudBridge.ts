@@ -281,11 +281,15 @@ sioExpressApp.get('/info', function(req: any, res: any) {
     for (let i = 0; i < App.connectedApps.length; i++) {
         let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
 
-        let subs = [];
+        let subs:any = {};
         if (App.connectedApps[i].robotSubscriptions) {
             for (let j = 0; j < App.connectedApps[i].robotSubscriptions.length; j++) {
                 let id_robot:string = App.connectedApps[i].robotSubscriptions[j].id_robot.toString();
-                subs.push(id_robot);
+                subs[id_robot] = {
+                    connection_state: App.connectedApps[i].robotSubscriptions[j].con_state,
+                    method: App.connectedApps[i].robotSubscriptions[j].con_method,
+                    turn_ip: App.connectedApps[i].robotSubscriptions[j].turn_ip,
+                };
                 if (!peers_subscribed_to_robot[id_robot])
                     peers_subscribed_to_robot[id_robot] = [];
                 peers_subscribed_to_robot[id_robot].push({
@@ -297,6 +301,7 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 
         appsData.push({
             'id': id_app,
+            'name': App.connectedApps[i].name ? App.connectedApps[i].name : 'Unnamed App',
             'inst': App.connectedApps[i].idInstance,
             'ip': App.connectedApps[i].socket.handshake.address,
             'subscriptions': subs
@@ -309,7 +314,8 @@ sioExpressApp.get('/info', function(req: any, res: any) {
         let ui_url = UI_ADDRESS_PREFIX+id_robot;
         robotsData.push({
             'id': id_robot,
-            'name': Robot.connectedRobots[i].name, 
+            'name': Robot.connectedRobots[i].name ? Robot.connectedRobots[i].name : 'Unnamed Robot',
+            'ros_distro': Robot.connectedRobots[i].ros_distro,
             'ui': ui_url,
             'ip': Robot.connectedRobots[i].socket.handshake.address,
             'peers': peers_subscribed_to_robot[id_robot] ? peers_subscribed_to_robot[id_robot] : []
@@ -337,11 +343,13 @@ sioExpressApp.get('/robot/register', async function(req:express.Request, res:exp
 
 sioExpressApp.get('/app/register', async function(req:express.Request, res:express.Response) {
 
-    if (req.query.id !== undefined || req.query.key !== undefined) {
+    //return defaults for existing app
+    if (req.query.id !== undefined || req.query.key !== undefined) { 
         return App.GetDefaultConfig(req, res, 
             appsCollection, PUBLIC_ADDRESS, SIO_PORT);
     }
 
+    // register new app, sets name from ?name=
     return App.Register(
         req, res, new ObjectId().toString(), //new key generated here
         appsCollection
@@ -447,7 +455,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         $d.l("Got peer:update from "+robot.idRobot+" for peer "+id_app+"/"+id_instance+": ", update_data);
         let app = App.FindConnected(id_app, id_instance);
-        if (app && app.isSubscribedToRobot(robot.idRobot)) {
+        if (app && app.getRobotSubscription(robot.idRobot)) {
             app.socket.emit('robot:update', update_data, (app_answer:any) => {
                 return_callback(app_answer);
             });
@@ -579,21 +587,23 @@ sioApps.use(async (appSocket:AppSocket, next) => {
     const dbApp = (await appsCollection.findOne({_id: searchId }));
 
     if (dbApp) {
+        let appName = dbApp.name;
+        appSocket.handshake.auth.name = appName;
         bcrypt.compare(appKey, dbApp.key_hash, function(err:any, res:any) {
             if (res) { //pass match => good
-                $d.l(('App '+idApp+' connected from '+appSocket.handshake.address).green);
+                $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] connected from '+appSocket.handshake.address).green);
                 appSocket.dbData = dbApp;
                 return next();
 
             } else { //invalid key
-                $d.l(('App '+idApp+' auth failed for '+appSocket.handshake.address).red);
+                $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] auth failed for '+appSocket.handshake.address).red);
                 const err = new Error("Access denied");
                 return next(err);
             }
         });
 
     } else { //app not found
-        $d.l(('App '+idApp+' not found in db for '+appSocket.handshake.address).red);
+        $d.l(('App id '+idApp+' not found in db for '+appSocket.handshake.address).red);
         const err = new Error("Access denied");
         return next(err);
     }
@@ -883,12 +893,32 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
     });
 
+    appSocket.on('con-info', async function (data:{ id_robot:string, state: string, method?:string, turn_ip?:string}) {
+
+        if (!data.id_robot || !ObjectId.isValid(data.id_robot))
+            return false;
+        
+        let id_robot = new ObjectId(data.id_robot);
+        
+        let sub = app.getRobotSubscription(id_robot);
+        if (!sub)
+            return false;
+        
+        sub.con_state = data.state;
+        sub.con_method = data.method;
+        sub.turn_ip = data.turn_ip;
+
+        $d.log('Got app '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') robot connection info:', data);
+
+        return true;
+    });
+
     /*
      * client disconnected
      */
     appSocket.on('disconnect', (msg:any) => {
 
-        $d.l(('Socket disconnected for app'+app.idApp.toString()+' (inst '+app.idInstance.toString()+'): '+msg).red);
+        $d.l(('Socket disconnected for app '+app.idApp.toString()+' (inst '+app.idInstance.toString()+'): '+msg).red);
 
         app.isAuthentificated = false;
         app.isConnected = false;

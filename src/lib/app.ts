@@ -25,6 +25,9 @@ export class App {
         id_robot: ObjectId,
         read?:string[],
         write?:string[][],
+        con_state?:string,
+        con_method?:string,
+        turn_ip?:string
     }[]
 
     static connectedApps:App[] = [];
@@ -125,16 +128,11 @@ export class App {
         }
     }
 
-    public isSubscribedToRobot(idRobot: ObjectId, outSubscription?:any):boolean {
+    public getRobotSubscription(idRobot: ObjectId):any {
         for (let i = 0; i < this.robotSubscriptions.length; i++) {
             if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
-                if (outSubscription !== undefined) {
-                    outSubscription.read = this.robotSubscriptions[i].read;
-                    outSubscription.write = this.robotSubscriptions[i].write;
-                }
-                return true;
+                return this.robotSubscriptions[i];
             }
-
         }
         return false;
     }
@@ -142,6 +140,7 @@ export class App {
     static Register(req:express.Request, res:express.Response, setPassword:string, appsCollection:Collection) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const saltRounds = 10;
+        let appName = req.query.name !== undefined ? req.query.name : undefined;
         bcrypt.genSalt(saltRounds, async function (err:any, salt:string) {
             if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res ); }
     
@@ -151,6 +150,7 @@ export class App {
                 let dateRegistered = new Date();
     
                 let appReg:InsertOneResult = await appsCollection.insertOne({
+                    name: appName,
                     registered: dateRegistered,
                     reg_ip: remote_ip,
                     key_hash: hash
@@ -192,6 +192,7 @@ export class App {
                     res.setHeader('Content-Type', 'application/json');
                     return res.send(JSON.stringify({
                         id_app: dbApp._id.toString(),
+                        name: dbApp.name,
                         key: req.query.key,
                         sio_address: publicAddress,
                         sio_path: '/app/socket.io',

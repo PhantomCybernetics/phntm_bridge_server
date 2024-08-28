@@ -66,7 +66,7 @@ Create a new config file `vim ~/cloud_bridge_config.jsonc` and paste:
 }
 ```
 
-### Add Cloud Bridge Cervice to Your compose.yaml
+### Add Cloud Bridge Service to Your compose.yaml
 ```yaml
 services:
   phntm_cloud_bridge:

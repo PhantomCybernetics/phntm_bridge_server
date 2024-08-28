@@ -48,8 +48,8 @@ export class Robot {
             Robot.connectedRobots.push(this);
             let robot = this;
             App.connectedApps.forEach(app => {
-                let sub:any = {};
-                if (app.isSubscribedToRobot(this.idRobot, sub)) {
+                let sub:any = app.getRobotSubscription(this.idRobot);
+                if (sub) {
                     $d.log('Stored sub: ', sub);
                     robot.initPeer(app, sub.read, sub.write)
                 }
@@ -110,7 +110,7 @@ export class Robot {
             if (notify) {
                 let that = this;
                 App.connectedApps.forEach(app => {
-                    if (!app.isSubscribedToRobot(this.idRobot))
+                    if (!app.getRobotSubscription(this.idRobot))
                         return;
 
                     app.socket.emit('robot', that.getStateData()) // = robot offline
@@ -186,7 +186,7 @@ export class Robot {
     public msgDefsToSubscribers():void {
         
         App.connectedApps.forEach(app => {
-            if (!app.isSubscribedToRobot(this.idRobot))
+            if (!app.getRobotSubscription(this.idRobot))
                 return;
             this.pushMissingMsgDefsToPeer(app);
         });
@@ -195,7 +195,7 @@ export class Robot {
     public nodesToSubscribers():void {
         let robotNodesData = this.labelSubsciberData(this.nodes);
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 app.socket.emit('nodes', robotNodesData)
             }
         });
@@ -204,7 +204,7 @@ export class Robot {
     public topicsToSubscribers():void {
         let robotTopicsData = this.labelSubsciberData(this.topics);
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 app.socket.emit('topics', robotTopicsData)
             }
         });
@@ -213,7 +213,7 @@ export class Robot {
     public servicesToSubscribers():void {
         let robotServicesData = this.labelSubsciberData(this.services);
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 // $d.l('emitting services to app', robotServicesData);
                 app.socket.emit('services', robotServicesData)
             }
@@ -223,7 +223,7 @@ export class Robot {
     public camerasToSubscribers():void {
         let robotCamerasData = this.labelSubsciberData(this.cameras);
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 // $d.l('emitting cameras to app', robotCamerasData);
                 app.socket.emit('cameras', robotCamerasData)
             }
@@ -232,7 +232,7 @@ export class Robot {
 
     public introspectionToSubscribers():void {
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 // $d.l('emitting discovery state to app', discoveryOn);
                 app.socket.emit('introspection', this.introspection)
             }
@@ -242,7 +242,7 @@ export class Robot {
     public dockerContainersToSubscribers():void {
         let robotDockerContainersData = this.labelSubsciberData(this.docker_containers);
         App.connectedApps.forEach(app => {
-            if (app.isSubscribedToRobot(this.idRobot)) {
+            if (app.getRobotSubscription(this.idRobot)) {
                 // $d.l('emitting docker to app', robotDockerContainersData);
                 app.socket.emit('docker', robotDockerContainersData)
             }
