@@ -32,7 +32,7 @@ export class Robot {
     nodes: any[];
     topics: any[];
     services: any[];
-    docker_containers: any[];
+    docker_containers: any = {}; // docker status as host => DockerStatusMsg
     cameras: any[];
 
     static LOG_EVENT_CONNECT: number = 1;

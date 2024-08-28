@@ -518,13 +518,13 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         robot.camerasToSubscribers();
     });
 
-    robotSocket.on('docker', async function(containers:any[]) {
+    robotSocket.on('docker', async function(docker_updates:any[]) {
 
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+containers.length+' Docker containers from '+robot.idRobot, containers);
-        robot.docker_containers = containers;
+        $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot, docker_updates);
+        robot.docker_containers = docker_updates;
         robot.dockerContainersToSubscribers();
     });
 
