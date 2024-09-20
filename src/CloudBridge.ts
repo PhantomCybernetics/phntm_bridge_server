@@ -765,9 +765,17 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     appSocket.on('unsubscribe', async function (data:{ id_robot:string, sources:string[]}, returnCallback) {
         $d.log('App unsubscribing from:', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot)
-            return;
+        if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
+            if (returnCallback) {
+                returnCallback({
+                    'err': 1,
+                    'msg': 'Invalid robot id '+data.id_robot
+                })
+            }
+            return false;
+        }
+
+        let id_robot = new ObjectId(data.id_robot);
 
         if (!data.sources) {
             if (returnCallback) {
@@ -779,7 +787,12 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.removeFromRobotSubscriptions(robot.idRobot, data.sources, null);
+        // remove local subs even if robot is not connected
+        app.removeFromRobotSubscriptions(id_robot, data.sources, null);
+
+        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        if (!robot)
+            return;        
 
         robot.socket.emit('unsubscribe', data, (resData:any) => {
 
