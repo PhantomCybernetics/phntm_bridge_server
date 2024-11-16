@@ -55,8 +55,8 @@
     "mongodb": "^5.5.0",
     "nearley": "^2.20.1",
     "path": "^0.12.7",
-    "socket.io": "4.7.1",
-    "socket.io-client": "4.7.1",
+    "socket.io": "^4.7.1",
+    "socket.io-client": "^4.7.1",
     "three": "^0.157.0",
     "typescript": "^5.2.2",
     "xml-formatter": "^3.4.1"
