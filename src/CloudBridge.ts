@@ -316,6 +316,8 @@ sioExpressApp.get('/info', function(req: any, res: any) {
             'id': id_robot,
             'name': Robot.connectedRobots[i].name ? Robot.connectedRobots[i].name : 'Unnamed Robot',
             'ros_distro': Robot.connectedRobots[i].ros_distro,
+            'git_sha': Robot.connectedRobots[i].git_sha,
+            'git_tag': Robot.connectedRobots[i].git_tag,
             'ui': ui_url,
             'ip': Robot.connectedRobots[i].socket.handshake.address,
             'peers': peers_subscribed_to_robot[id_robot] ? peers_subscribed_to_robot[id_robot] : []
@@ -423,7 +425,9 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.name = robotSocket.handshake.auth.name ?
                     robotSocket.handshake.auth.name :
                         (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
-    robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '-';
+    robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '';
+    robot.git_sha = robotSocket.handshake.auth.git_sha ? robotSocket.handshake.auth.git_sha : '';
+    robot.git_tag = robotSocket.handshake.auth.git_tag ? robotSocket.handshake.auth.git_tag : '';
 
     $d.log(('Ohi, robot '+robot.name+' aka '+robot.idRobot.toString()+' ['+robot.ros_distro+'] connected to Socket.io').cyan);
 

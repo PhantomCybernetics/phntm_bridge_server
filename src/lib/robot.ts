@@ -21,6 +21,8 @@ export class Robot {
     idRobot: ObjectId;
     name: string;
     ros_distro: string;
+    git_sha: string;
+    git_tag: string;
     type: ObjectId;
     isConnected: boolean;
     isAuthentificated: boolean;
@@ -128,7 +130,9 @@ export class Robot {
 
         data['id_robot'] = this.idRobot.toString()
         data['name'] =  this.name ? this.name : 'Unnamed Robot';
-        data['ros_distro'] =  this.ros_distro;
+        data['ros_distro'] = this.ros_distro;
+        data['git_sha'] = this.git_sha;
+        data['git_tag'] = this.git_tag;
 
         if (this.socket)
             data['ip'] =  this.socket.conn.remoteAddress; //no ip = robot offline
@@ -276,6 +280,8 @@ export class Robot {
                                    { $set: {
                                         name: this.name,
                                         ros_distro: this.ros_distro,
+                                        git_sha: this.git_sha,
+                                        git_tag: this.git_tag,
                                         last_connected: this.timeConnected,
                                         last_ip: this.socket.handshake.address,
                                     }, $inc: { total_sessions: 1 } });
