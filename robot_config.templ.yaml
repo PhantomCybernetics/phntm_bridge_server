@@ -72,13 +72,13 @@
       durability: 1 # TRANSIENT_LOCAL
       reliability: 1 # RELIABLE
       lifespan: -1 # INFINITY
-    /battery:
-      min_voltage: 9.0 # set empty voltage
-      max_voltage: 12.6 # set set full voltage
+    # /battery:
+    #  min_voltage: 9.0 # set empty voltage
+    #  max_voltage: 12.6 # set set full voltage
     
-    ui_battery_topic: /battery # battery to show in UI, '' to disable
+    ui_battery_topic: '' # battery to show in the UI (e.g. /battery), '' to disable
 
-    ui_wifi_monitor_topic: '/iw_status' # WiFi monitoring and control via Agent
+    ui_wifi_monitor_topic: '/iw_status' # WiFi monitor topic to show in the UI
     ui_enable_wifi_scan: True
     ui_enable_wifi_roam: False
 
