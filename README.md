@@ -1,6 +1,6 @@
 # Phantom Cloud Bridge
 
-This server fascilitates WebRTC P2P conenction between a Phantom Bridge node running on a robot, and the Bridge Web UI, or any similar clients using this API.
+This server facilitates WebRTC P2P connection between a Phantom Bridge node running on a robot, and the Bridge Web UI, or any similar clients using this API.
 
 The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization withour recording any peer communication.
 
