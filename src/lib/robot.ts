@@ -20,6 +20,7 @@ export class RobotSocket extends SocketIO.Socket {
 export class Robot {
     idRobot: ObjectId;
     name: string;
+    maintainer_email: string;
     ros_distro: string;
     git_sha: string;
     git_tag: string;
@@ -129,7 +130,8 @@ export class Robot {
             data = {};
 
         data['id_robot'] = this.idRobot.toString()
-        data['name'] =  this.name ? this.name : 'Unnamed Robot';
+        data['name'] = this.name ? this.name : 'Unnamed Robot';
+        data['maintainer_email'] = this.maintainer_email ? this.maintainer_email : '';
         data['ros_distro'] = this.ros_distro;
         data['git_sha'] = this.git_sha;
         data['git_tag'] = this.git_tag;
@@ -279,6 +281,7 @@ export class Robot {
         robotsCollection.updateOne({_id: this.idRobot},
                                    { $set: {
                                         name: this.name,
+                                        maintainer_email: this.maintainer_email,
                                         ros_distro: this.ros_distro,
                                         git_sha: this.git_sha,
                                         git_tag: this.git_tag,
@@ -347,7 +350,8 @@ export class Robot {
         });
     }
     
-    static async GetDefaultConfig(req:express.Request, res:express.Response, robotsCollection:Collection, publicAddress:string, sioPort:number) {
+    static async GetDefaultConfig(req:express.Request, res:express.Response, robotsCollection:Collection,
+            publicAddress:string, sioPort:number, robotUIAddress:string, defaultMaintainerEmail:string) {
     
         if (!req.query.id || !ObjectId.isValid(req.query.id as string) || !req.query.key) {
             $d.err('Invalidid id_robot provided: '+req.query.id)
@@ -370,9 +374,11 @@ export class Robot {
                         cfg = cfg.replace('%HOST%', publicAddress);
                         cfg = cfg.replace('%REG_DATE_TIME%', dbRobot.registered.toISOString());
                         cfg = cfg.replace('%REG_IP%', dbRobot.reg_ip);
+                        cfg = cfg.replace('%ROBOT_UI_ADDRESS%', robotUIAddress);
     
                         cfg = cfg.replace('%ROBOT_ID%', dbRobot._id.toString());
                         cfg = cfg.replace('%ROBOT_KEY%', req.query.key as string);
+                        cfg = cfg.replace('%MAINTAINER_EMAIL%', defaultMaintainerEmail);
     
                         cfg = cfg.replace('%SIO_ADDRESS%', publicAddress);
                         cfg = cfg.replace('%SIO_PATH%', '/robot/socket.io');

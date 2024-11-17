@@ -36,6 +36,7 @@ if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
     $d.e('Files cache dir not found: '+FILES_CACHE_DIR);
     process.exit();
 };
+const DEFAULT_MAINTAINER_EMAIL:string = CONFIG['BRIDGE'].defaultMaintainerEmail;
 const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix;
 const PUBLIC_ADDRESS:string = CONFIG['BRIDGE'].address;
 const DB_URL:string = CONFIG.dbUrl;
@@ -58,6 +59,7 @@ console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/socket.io/         Robot AP
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?yaml      Register new robot (YAML/JSON)').green);
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/socket.io/           App API').green);
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register             Register new App (JSON)').green);
+console.log((' Using certs: '), { key: certFiles[0], cert: certFiles[1] });
 console.log('----------------------------------------------------------------------'.yellow);
 
 let db:Db = null;
@@ -315,6 +317,7 @@ sioExpressApp.get('/info', function(req: any, res: any) {
         robotsData.push({
             'id': id_robot,
             'name': Robot.connectedRobots[i].name ? Robot.connectedRobots[i].name : 'Unnamed Robot',
+            'maintainer_email': Robot.connectedRobots[i].maintainer_email,
             'ros_distro': Robot.connectedRobots[i].ros_distro,
             'git_sha': Robot.connectedRobots[i].git_sha,
             'git_tag': Robot.connectedRobots[i].git_tag,
@@ -333,8 +336,11 @@ sioExpressApp.get('/info', function(req: any, res: any) {
 sioExpressApp.get('/robot/register', async function(req:express.Request, res:express.Response) {
 
     if (req.query.id !== undefined || req.query.key !== undefined) {
+        let robotUIAddress = UI_ADDRESS_PREFIX + req.query.id as string;
         return Robot.GetDefaultConfig(req, res, 
-            robotsCollection, PUBLIC_ADDRESS, SIO_PORT);
+            robotsCollection, PUBLIC_ADDRESS, SIO_PORT,
+            robotUIAddress,
+            DEFAULT_MAINTAINER_EMAIL);
     }
     
     return Robot.Register(
@@ -425,6 +431,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.name = robotSocket.handshake.auth.name ?
                     robotSocket.handshake.auth.name :
                         (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
+    robot.maintainer_email = robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email;
     robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '';
     robot.git_sha = robotSocket.handshake.auth.git_sha ? robotSocket.handshake.auth.git_sha : '';
     robot.git_tag = robotSocket.handshake.auth.git_tag ? robotSocket.handshake.auth.git_tag : '';
