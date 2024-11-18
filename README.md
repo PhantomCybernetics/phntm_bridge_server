@@ -49,8 +49,8 @@ cd cloud_bridge
 docker build -f Dockerfile -t phntm/cloud-bridge:latest .
 ```
 
-### Create a Config File
-Create a new config file `~/cloud_bridge_config.jsonc` and paste:
+### Create a config file
+Create a new config file e.g. `~/cloud_bridge_config.jsonc` and paste:
 ```jsonc
 {
   "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
@@ -63,19 +63,27 @@ Create a new config file `~/cloud_bridge_config.jsonc` and paste:
           "private": "/ssl/private.pem",
           "public": "/ssl/fullchain.crt"
       },
-      "sioPort": 1337, # socket.io port of this server
-      "address": "https://bridge.phntm.io", # address of this server
-      "uiAddressPrefix": "https://bridge.phntm.io/", # full prefix for UI links
-      
       "admin": { // credentials required for password-protected APIs here
-      "username": "admin",
-      "password": "**********"
-    },
+            "username": "ADMIN_USER",
+            "password": "ADMIN_PASS"
+      },
+
+      "sioPort": 1337, // socket.io port of this server
+      "address": "https://bridge.phntm.io", // address of this server
+      "uiAddressPrefix": "https://bridge.phntm.io/", // full prefix for robot UI links (ROBOT_ID will be appended)
+      
+      "verbose": false,
+      "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
+
+      "defaultMaintainerEmail": "robot.master@domain.com",
+
+      "filesPort": 1338, // file extractor port
+      "filesCacheDir": "/file_fw_cache" // client file will be cached here
   }
 }
 ```
 
-### Add Cloud Bridge Service to your compose.yaml
+### Add Cloud Bridge service to your compose.yaml
 ```yaml
 services:
   phntm_cloud_bridge:
@@ -88,36 +96,39 @@ services:
       - TERM=xterm
     ports:
       - 1337:1337
+      - 1338:1338
     volumes:
       - /etc/letsencrypt:/ssl
       - ~/cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc # config goes here
+      - ~/file_fw_cache/:/file_fw_cache/ # client files are cached here
     command:
       [  /bin/sh,  /phntm_cloud_bridge/run.cloud-bridge.sh ]
 ```
+Note that in this cofiguration, ports 1337 and 1338 must be open to inboud TCP traffic!
 
 ### Launch
 ```bash
 docker compose up phntm_cloud_bridge
 ```
 
-# REST API
+## REST API
 
-### Registering a New Robot
+### Registering a new Robot
 
 Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration YAML file for your phntm_bridge. This uses robot_config.templ.yaml as a template. 
 
 Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot, but returns a JSON.
 
-### Registering a New App
+### Registering a new App
 
 Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. Phntm Web UI forks and other services using this API are considered individual apps and need to refister first
 
-### Server Status
+### Server status
 
-https://bridge.phntm.io:1337/info (protected with admin password)
+https://bridge.phntm.io:1337/info (protected with admin password) \
 Provides various statistical information about the server utilization.
 
-# TURN/STUN Server
+## TURN/STUN Server
 Phntm Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP and load-balanced independently.
 
 ### Install Coturn
@@ -161,7 +172,7 @@ UDP	3478-3479
 UDP	32355-65535
 ```
 
-Run coturn:
+### Run coturn:
 ```bash
 sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot
