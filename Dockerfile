@@ -20,7 +20,7 @@ WORKDIR /
 
 ENV PHNTM_WS /phntm_cloud_bridge
 
-RUN git clone https://github.com/PhantomCybernetics/cloud_bridge.git $PHNTM_WS
+COPY ./ $PHNTM_WS
 RUN cd $PHNTM_WS && npm install
 
 WORKDIR $PHNTM_WS
