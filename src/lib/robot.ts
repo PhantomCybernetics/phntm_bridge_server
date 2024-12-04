@@ -129,7 +129,7 @@ export class Robot {
         if (!data || typeof data !== 'object')
             data = {};
 
-        data['id_robot'] = this.idRobot.toString()
+        data['id_robot'] = this.idRobot.toString();
         data['name'] = this.name ? this.name : 'Unnamed Robot';
         data['maintainer_email'] = this.maintainer_email ? this.maintainer_email : '';
         data['ros_distro'] = this.ros_distro;
@@ -271,6 +271,21 @@ export class Robot {
         App.connectedApps.forEach(app => {
             if (app.getRobotSubscription(this.idRobot)) {
                 app.socket.emit('robot_peers', robotPeerData)
+            }
+        });
+    }
+
+    // broadcasts service call initiated by senderPeer to all other connected peers
+    public broadcastPeerServiceCall(senderPeer:App, service:string, msg:any):void {
+        App.connectedApps.forEach(app => {
+            if (app == senderPeer)
+                return; //skip sender
+            let data = this.labelSubsciberData({
+                'service': service,
+                'msg': msg
+            });
+            if (app.getRobotSubscription(this.idRobot)) {
+                app.socket.emit('peer_service_call', data);
             }
         });
     }

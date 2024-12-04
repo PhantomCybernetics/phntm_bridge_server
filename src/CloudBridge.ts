@@ -892,6 +892,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
                 return returnCallback(resData);
         });
 
+        robot.broadcastPeerServiceCall(app, data.service, data.msg);
     });
 
     appSocket.on('con-info', async function (data:{ id_robot:string, state: string, method?:string, turn_ip?:string}) {
