@@ -14,14 +14,10 @@ Cloud bridge also forwards files requested by a peer App (UI) from the robot's f
 
 ## Install Cloud Bridge
 
-### Install Docker, Docker Build & Docker Compose
+### Install Node.js
+Last tested v18.20.5
 ```bash
-sudo apt install docker docker-buildx docker-compose-v2
-```
-Then add the current user to the docker group:
-```bash
-sudo usermod -aG docker ${USER}
-# log out & back in
+sudo apt install nodejs
 ```
 
 ### Install MongoDB
@@ -41,16 +37,16 @@ sudo systemctl start mongod
 sudo systemctl enable mongod # run at boot
 ```
 
-### Clone this repo and build the Docker Image
+### Clone this repo and install Node dependencies
 ```bash
 cd ~
 git clone git@github.com:PhantomCybernetics/cloud_bridge.git cloud_bridge
 cd cloud_bridge
-docker build -f Dockerfile -t phntm/cloud-bridge:latest .
+npm install
 ```
 
 ### Create a config file
-Create a new config file e.g. `~/cloud_bridge_config.jsonc` and paste:
+Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
 ```jsonc
 {
   "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
@@ -58,10 +54,9 @@ Create a new config file e.g. `~/cloud_bridge_config.jsonc` and paste:
 
   "BRIDGE": {
       "ssl": {
-          // certificates need to be exposed to the docker container
           // use certbot or the ssl/gen.sh script for self signed dev certificates
-          "private": "/ssl/private.pem",
-          "public": "/ssl/fullchain.crt"
+          "private": "/your_ssl_dir/private.pem",
+          "public": "/your_ssl_dir/fullchain.crt"
       },
       "admin": { // credentials required for password-protected APIs here
             "username": "ADMIN_USER",
@@ -78,37 +73,43 @@ Create a new config file e.g. `~/cloud_bridge_config.jsonc` and paste:
       "defaultMaintainerEmail": "robot.master@domain.com",
 
       "filesPort": 1338, // file extractor port
-      "filesCacheDir": "/file_fw_cache" // client file will be cached here
+      "filesCacheDir": "/home/ubuntu/file_fw_cache" // client files will be cached here
   }
 }
 ```
-
-### Add Cloud Bridge service to your compose.yaml
-```yaml
-services:
-  phntm_cloud_bridge:
-    image: phntm/cloud-bridge:latest
-    container_name: phntm-cloud-bridge
-    hostname: phntm-cloud-bridge.local
-    restart: unless-stopped
-    privileged: true
-    environment:
-      - TERM=xterm
-    ports:
-      - 1337:1337
-      - 1338:1338
-    volumes:
-      - /etc/letsencrypt:/ssl
-      - ~/cloud_bridge_config.jsonc:/phntm_cloud_bridge/config.jsonc # config goes here
-      - ~/file_fw_cache/:/file_fw_cache/ # client files are cached here
-    command:
-      [  /bin/sh,  /phntm_cloud_bridge/run.cloud-bridge.sh ]
-```
 Note that in this cofiguration, ports 1337 and 1338 must be open to inboud TCP traffic!
 
-### Launch
+### Add system service to your systemd
 ```bash
-docker compose up phntm_cloud_bridge
+sudo vim /etc/systemd/system/phntm_cloud_bridge.service
+```
+... and paste:
+```
+[Unit]
+Description=phntm cloud_bridge service
+After=network.target
+
+[Service]
+ExecStart=/home/ubuntu/cloud_bridge/run.cloud-bridge.sh
+Restart=always
+User=root
+Environment=NODE_ENV=production
+WorkingDirectory=/home/ubuntu/cloud_bridge/
+StandardOutput=append:/var/log/cloud_bridge.log
+StandardError=append:/var/log/cloud_bridge.err.log
+
+[Install]
+WantedBy=multi-user.target
+```
+Reload systemctl daemon
+```bash
+sudo systemctl daemon-reload
+```
+
+### Launch:
+```bash
+sudo systemctl start phntm_cloud_bridge.service
+sudo systemctl enable phntm_cloud_bridge.service # will launch on boot
 ```
 
 ## REST API
