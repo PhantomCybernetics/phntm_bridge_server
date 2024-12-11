@@ -138,7 +138,9 @@ Coturn is a popular open-source TURN server, more at https://github.com/coturn/c
 ```bash
 sudo apt-get -y install coturn
 sudo vim /etc/default/coturn
-# TURNSERVER_ENABLED=1
+
+# uncomment this line & save
+TURNSERVER_ENABLED=1
 
 sudo cp /etc/turnserver.conf /etc/turnserver.conf.bak
 sudo vim /etc/turnserver.conf
