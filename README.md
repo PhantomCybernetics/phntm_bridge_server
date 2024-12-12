@@ -73,7 +73,12 @@ Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
       "defaultMaintainerEmail": "robot.master@domain.com",
 
       "filesPort": 1338, // file extractor port
-      "filesCacheDir": "/home/ubuntu/file_fw_cache" // client files will be cached here
+      "filesCacheDir": "/home/ubuntu/file_fw_cache", // client files will be cached here
+
+      "iceServers": [ // stun/turn servers to push to robots and sync ice credentials with
+        "turn:ca.turn.phntm.io:3478",
+        "turn:ca.turn.phntm.io:3479"
+      ]
   }
 }
 ```
@@ -146,26 +151,22 @@ sudo cp /etc/turnserver.conf /etc/turnserver.conf.bak
 sudo vim /etc/turnserver.conf
 ```
 
-Paste this:
+Paste and review this:
 ```conf
 listening-port=3478
-tls-listening-port=5349
 alt-listening-port=3479
+tls-listening-port=5349
 alt-tls-listening-port=5350
-external-ip=54.67.121.238/172.31.11.252
 min-port=32355
 max-port=65535
+external-ip=54.67.121.238/172.31.11.252
 server-name=turn.phntm.io
-# TODO: these will be appId:key, robotId:key pairs from Mongo
-user=robo:pass
-user=app:pass
 realm=phntm.io
 cert=/path/to/cert.pem
 pkey=/path/to/privkey.pem
 cipher-list="DEFAULT"
 ec-curve-name=prime256v1
 log-file=/var/tmp/turn.log
-cli-password=*CLI_PASS*
 ```
 
 Note that in this cofiguration, the following ports must be open to inboud traffic:
