@@ -21,6 +21,7 @@ export class Robot {
     idRobot: ObjectId;
     name: string;
     maintainer_email: string;
+    
     ros_distro: string;
     git_sha: string;
     git_tag: string;
@@ -337,9 +338,14 @@ export class Robot {
         });
     }
 
-    static Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection) {
+    static async syncICECredentials(id_robot:string, ice_secret:string, iceServers:string[]) {
+            
+    }
+
+    static Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection, iceServers:string[]) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const saltRounds = 10;
+
         bcrypt.genSalt(saltRounds, async function (err:any, salt:string) {
             if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res ); }
     
@@ -347,15 +353,19 @@ export class Robot {
                 if (err) { $d.err('Error while hashing password'); return ErrOutText( 'Error while registering', res ); }
     
                 let dateRegistered = new Date();
-    
+                
+                let ice_secret = new ObjectId().toString();
                 let robotReg:InsertOneResult = await robotsCollection.insertOne({
                     registered: dateRegistered,
                     reg_ip: remote_ip,
-                    key_hash: hash
+                    key_hash: hash,
+                    ice_secret: ice_secret
                 });
     
                 $d.l(('Registered new robot id '+robotReg.insertedId.toString()+' from '+remote_ip).yellow);
-    
+                
+                Robot.syncICECredentials(robotReg.insertedId.toString(), ice_secret, iceServers);
+
                 if (req.query.yaml !== undefined) {
                     return res.redirect('/robot/register?yaml&id='+robotReg.insertedId.toString()+'&key='+setPassword);
                 } else {
@@ -364,7 +374,8 @@ export class Robot {
             });
         });
     }
-    
+
+
     static async GetDefaultConfig(req:express.Request, res:express.Response, robotsCollection:Collection,
             publicAddress:string, sioPort:number, robotUIAddress:string, defaultMaintainerEmail:string) {
     

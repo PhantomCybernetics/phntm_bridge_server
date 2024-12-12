@@ -1,7 +1,7 @@
 const startupTime:number = Date.now();
 
 import { Debugger } from './lib/debugger';
-const $d:Debugger = Debugger.Get('[Cloud Bridge]');
+const $d:Debugger = Debugger.Get('Cloud Bridge');
 
 import { GetCerts, UncaughtExceptionHandler } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
@@ -51,6 +51,9 @@ const HTTPS_SERVER_OPTIONS = {
 const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
 
+const ICE_SERVERS:string[] = CONFIG['BRIDGE'].iceServers;
+
+$d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
 console.log(' PHNTM CLOUD BRIDGE'.yellow);
 console.log('');
@@ -61,6 +64,11 @@ console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/socket.io/           App API'
 console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register             Register new App (JSON)').green);
 console.log((' Using certs: '), { key: certFiles[0], cert: certFiles[1] });
 console.log('----------------------------------------------------------------------'.yellow);
+
+console.log('ICE SERVERS:');
+ICE_SERVERS.forEach((one)=>{
+    console.log('  '+one);
+});
 
 let db:Db = null;
 let humansCollection:Collection = null;
@@ -345,7 +353,8 @@ sioExpressApp.get('/robot/register', async function(req:express.Request, res:exp
     
     return Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
-        robotsCollection
+        robotsCollection,
+        ICE_SERVERS
     );
 });
 
@@ -452,6 +461,8 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.introspection = false;
 
     robot.addToConnected(); //sends update to subscribers
+
+    robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret });
 
     robotSocket.on('peer:update', async function(update_data:any, return_callback:any) {
 
