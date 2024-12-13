@@ -13,6 +13,8 @@ const fs = require('fs');
 import { parseRos2idl } from "@foxglove/rosmsg";
 import { MessageDefinition } from "@foxglove/message-definition";
 
+import axios, { AxiosResponse, AxiosError }  from 'axios';
+
 export class RobotSocket extends SocketIO.Socket {
     dbData?: any;
 }
@@ -338,11 +340,36 @@ export class Robot {
         });
     }
 
-    static async syncICECredentials(id_robot:string, ice_secret:string, iceServers:string[]) {
+    static async SyncICECredentials(idRobot:string, iceSecret:string, iceServers:string[], syncPort:number, syncSecret:string, cb?:any) {
+        iceServers.forEach(async (syncHost)=>{
+            let syncUrl = 'https://'+syncHost+':'+syncPort;
+            $d.log((' >> Syncing ICE credentials of '+idRobot+' with '+syncUrl).cyan);
             
+            await axios.post(syncUrl, {
+                auth: syncSecret,
+                ice_id: idRobot,
+                ice_secret: iceSecret
+            }, { timeout: 5000 })
+            .then((response:AxiosResponse) => {
+                console.log(response);
+                if (cb)
+                    cb();
+                return;
+            })
+            .catch((error:AxiosError) => {
+                if (error.code === 'ECONNABORTED') {
+                    $d.err('Request timed out for '+syncUrl+' (syncing '+idRobot+')');
+                } else {
+                    $d.err('Error from '+syncUrl+' (syncing '+idRobot+'):', error.message);
+                }
+                if (cb)
+                    cb();
+                return;
+            });
+        });
     }
 
-    static Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection, iceServers:string[]) {
+    static Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection, iceSyncServers:string[], iceSyncPort:number, iceSyncSecret:string) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const saltRounds = 10;
 
@@ -364,7 +391,7 @@ export class Robot {
     
                 $d.l(('Registered new robot id '+robotReg.insertedId.toString()+' from '+remote_ip).yellow);
                 
-                Robot.syncICECredentials(robotReg.insertedId.toString(), ice_secret, iceServers);
+                Robot.SyncICECredentials(robotReg.insertedId.toString(), ice_secret, iceSyncServers, iceSyncPort, iceSyncSecret);
 
                 if (req.query.yaml !== undefined) {
                     return res.redirect('/robot/register?yaml&id='+robotReg.insertedId.toString()+'&key='+setPassword);

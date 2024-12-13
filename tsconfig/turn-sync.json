@@ -1,0 +1,6 @@
+{
+  "extends": "./common",
+  "include": [
+    "../src/SyncTURNCredentials.ts"
+  ]
+}

@@ -79,6 +79,11 @@ Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
         "turn:ca.turn.phntm.io:3478",
         "turn:ca.turn.phntm.io:3479"
       ]
+  },
+
+  "ICE_SYNC": {
+    "port": 1234, // stun/turn credential will be pushed to configured ice servers and this port
+    "secret" : "SYNC_PASS" // secret matching credentials receiver config on each stun/turn server
   }
 }
 ```
@@ -143,11 +148,10 @@ Coturn is a popular open-source TURN server, more at https://github.com/coturn/c
 ```bash
 sudo apt-get -y install coturn
 sudo vim /etc/default/coturn
-
 # uncomment this line & save
 TURNSERVER_ENABLED=1
 
-sudo cp /etc/turnserver.conf /etc/turnserver.conf.bak
+sudo cp /etc/turnserver.conf /etc/turnserver.conf.bak # back up the original
 sudo vim /etc/turnserver.conf
 ```
 

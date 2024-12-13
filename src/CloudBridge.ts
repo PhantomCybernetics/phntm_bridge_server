@@ -40,8 +40,8 @@ const DEFAULT_MAINTAINER_EMAIL:string = CONFIG['BRIDGE'].defaultMaintainerEmail;
 const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix;
 const PUBLIC_ADDRESS:string = CONFIG['BRIDGE'].address;
 const DB_URL:string = CONFIG.dbUrl;
-const SSL_CERT_PRIVATE =  CONFIG['BRIDGE'].ssl.private;
-const SSL_CERT_PUBLIC =  CONFIG['BRIDGE'].ssl.public;
+const SSL_CERT_PRIVATE = CONFIG['BRIDGE'].ssl.private;
+const SSL_CERT_PUBLIC = CONFIG['BRIDGE'].ssl.public;
 const DIE_ON_EXCEPTION:boolean = CONFIG.dieOnException;
 const certFiles:string[] = GetCerts(SSL_CERT_PRIVATE, SSL_CERT_PUBLIC);
 const HTTPS_SERVER_OPTIONS = {
@@ -52,6 +52,21 @@ const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
 
 const ICE_SERVERS:string[] = CONFIG['BRIDGE'].iceServers;
+const ICE_SYNC_SERVERS:string[] = [];
+if (ICE_SERVERS) {
+    ICE_SERVERS.forEach((one_server:string)=>{
+        let serverParts = one_server.split(':');
+        if (serverParts.length != 3) {
+            $d.err('Server misconfigured in config: '+one_server+'; ingnoring in sync');
+            return;
+        }
+        if (ICE_SYNC_SERVERS.indexOf(serverParts[1]) == -1) {
+            ICE_SYNC_SERVERS.push(serverParts[1]);
+        }
+    });
+}
+const ICE_SYNC_PORT:number = CONFIG['ICE_SYNC'].port;
+const ICE_SYNC_SECRET:string = CONFIG['ICE_SYNC'].secret;
 
 $d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
@@ -69,6 +84,8 @@ console.log('ICE SERVERS:');
 ICE_SERVERS.forEach((one)=>{
     console.log('  '+one);
 });
+console.log('ICE sync servers: '+ICE_SYNC_SERVERS.length);
+console.log('ICE sync port: '+ICE_SYNC_PORT);
 
 let db:Db = null;
 let humansCollection:Collection = null;
@@ -354,7 +371,9 @@ sioExpressApp.get('/robot/register', async function(req:express.Request, res:exp
     return Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
         robotsCollection,
-        ICE_SERVERS
+        ICE_SYNC_SERVERS,
+        ICE_SYNC_PORT,
+        ICE_SYNC_SECRET
     );
 });
 
@@ -460,9 +479,9 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.docker_containers = [];
     robot.introspection = false;
 
-    robot.addToConnected(); //sends update to subscribers
+    robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret }); // push this before peer info
 
-    robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret });
+    robot.addToConnected(); // sends update to subscribers and peers to the robot
 
     robotSocket.on('peer:update', async function(update_data:any, return_callback:any) {
 
