@@ -351,7 +351,11 @@ export class Robot {
                 ice_secret: iceSecret
             }, { timeout: 5000 })
             .then((response:AxiosResponse) => {
-                console.log(response);
+                if (response.status == 200) {
+                    $d.log('Sync OK for '+idRobot);
+                } else {
+                    $d.err('Sync returned code '+response.status+' for '+idRobot);
+                }
                 if (cb)
                     cb();
                 return;
