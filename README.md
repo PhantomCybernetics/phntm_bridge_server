@@ -185,7 +185,7 @@ UDP	32355-65535
 
 ### Install TURN/STUN Credentials Receiver
 
-You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials.
+You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials with the Cloud Bridge. You can also use the command line utility `run.turn-sync.sh` of the Cloud Bridge package to selectively sync credentials with newly added TURN servers.
 
 ### Run coturn:
 ```bash
