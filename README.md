@@ -158,19 +158,22 @@ sudo vim /etc/turnserver.conf
 Paste and review this:
 ```conf
 listening-port=3478
-alt-listening-port=3479
 tls-listening-port=5349
+alt-listening-port=3479
 alt-tls-listening-port=5350
+external-ip=52.53.174.178/172.31.4.189
 min-port=32355
 max-port=65535
-external-ip=54.67.121.238/172.31.11.252
 server-name=turn.phntm.io
 realm=phntm.io
-cert=/path/to/cert.pem
-pkey=/path/to/privkey.pem
+lt-cred-mech
+userdb=/var/lib/turn/turndb
+cert=/your_ssl_dir/public_cert.pem
+pkey=/your_ssl_dir/privkey.pem
 cipher-list="DEFAULT"
 ec-curve-name=prime256v1
 log-file=/var/tmp/turn.log
+verbose
 ```
 
 Note that in this cofiguration, the following ports must be open to inboud traffic:
@@ -179,6 +182,10 @@ TCP	5349-5350
 UDP	3478-3479
 UDP	32355-65535
 ```
+
+### Install TURN/STUN Credentials Receiver
+
+You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials.
 
 ### Run coturn:
 ```bash
