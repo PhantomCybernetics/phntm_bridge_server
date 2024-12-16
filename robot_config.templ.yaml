@@ -13,11 +13,9 @@
     maintainer_email: '%MAINTAINER_EMAIL%' # e-mail for service announcements
     
     ## Socket.io config
-    sio_address: %SIO_ADDRESS%
-    sio_path: %SIO_PATH%
-    sio_port: %SIO_PORT%
-    sio_ssl_verify: True
-    sio_connection_retry_sec: 5.0
+    sio_address: %SIO_ADDRESS% # Cloud Bridge to connect to, see https://docs.phntm.io/bridge/availability-zones.html
+    # sio_ssl_verify: True
+    # sio_connection_retry_sec: 5.0
 
     log_sdp: True # verbose WebRTC debug
     log_heartbeat: True # debug heartbeat

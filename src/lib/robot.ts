@@ -14,6 +14,7 @@ import { parseRos2idl } from "@foxglove/rosmsg";
 import { MessageDefinition } from "@foxglove/message-definition";
 
 import axios, { AxiosResponse, AxiosError }  from 'axios';
+import { resolve4 } from "dns";
 
 export class RobotSocket extends SocketIO.Socket {
     dbData?: any;
@@ -23,7 +24,7 @@ export class Robot {
     idRobot: ObjectId;
     name: string;
     maintainer_email: string;
-    
+
     ros_distro: string;
     git_sha: string;
     git_tag: string;
@@ -293,13 +294,14 @@ export class Robot {
         });
     }
 
-    public logConnect(robotsCollection:Collection, robotLogsCollection:Collection):void {
+    public logConnect(robotsCollection:Collection, robotLogsCollection:Collection, publicBridgeAddress:string):void {
 
         this.timeConnected = new Date();
         robotsCollection.updateOne({_id: this.idRobot},
                                    { $set: {
                                         name: this.name,
                                         maintainer_email: this.maintainer_email,
+                                        bridge_server: publicBridgeAddress, // save current instance for /locate
                                         ros_distro: this.ros_distro,
                                         git_sha: this.git_sha,
                                         git_tag: this.git_tag,
@@ -373,7 +375,10 @@ export class Robot {
         });
     }
 
-    static Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection, iceSyncServers:string[], iceSyncPort:number, iceSyncSecret:string) {
+    static async Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection,
+        publicBridgeAddress:string,
+        iceSyncServers:string[], iceSyncPort:number, iceSyncSecret:string
+    ) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const saltRounds = 10;
 
@@ -388,6 +393,7 @@ export class Robot {
                 let ice_secret = new ObjectId().toString();
                 let robotReg:InsertOneResult = await robotsCollection.insertOne({
                     registered: dateRegistered,
+                    bridge_server: publicBridgeAddress,
                     reg_ip: remote_ip,
                     key_hash: hash,
                     ice_secret: ice_secret
@@ -398,9 +404,9 @@ export class Robot {
                 Robot.SyncICECredentials(robotReg.insertedId.toString(), ice_secret, iceSyncServers, iceSyncPort, iceSyncSecret);
 
                 if (req.query.yaml !== undefined) {
-                    return res.redirect('/robot/register?yaml&id='+robotReg.insertedId.toString()+'&key='+setPassword);
+                    return res.redirect('/robot?yaml&id='+robotReg.insertedId.toString()+'&key='+setPassword);
                 } else {
-                    return res.redirect('/robot/register?id='+robotReg.insertedId.toString()+'&key='+setPassword);
+                    return res.redirect('/robot?id='+robotReg.insertedId.toString()+'&key='+setPassword);
                 }
             });
         });
@@ -411,9 +417,8 @@ export class Robot {
             publicAddress:string, sioPort:number, robotUIAddress:string, defaultMaintainerEmail:string) {
     
         if (!req.query.id || !ObjectId.isValid(req.query.id as string) || !req.query.key) {
-            $d.err('Invalidid id_robot provided: '+req.query.id)
-            res.status(403);
-            return res.send('Access denied, invalid credentials');
+            $d.err('Invalid id_robot provided in GetDefaultConfig: '+req.query.id)
+            return res.status(403).send('Access denied, invalid credentials');
         }
     
         let searchId = new ObjectId(req.query.id as string);
@@ -437,7 +442,7 @@ export class Robot {
                         cfg = cfg.replace('%ROBOT_KEY%', req.query.key as string);
                         cfg = cfg.replace('%MAINTAINER_EMAIL%', defaultMaintainerEmail);
     
-                        cfg = cfg.replace('%SIO_ADDRESS%', publicAddress);
+                        cfg = cfg.replace('%SIO_ADDRESS%', dbRobot.bridge_server);
                         cfg = cfg.replace('%SIO_PATH%', '/robot/socket.io');
                         cfg = cfg.replace('%SIO_PORT%', sioPort.toString());
     
@@ -452,7 +457,7 @@ export class Robot {
                         return res.send(JSON.stringify({
                             id_robot: dbRobot._id.toString(),
                             key: req.query.key,
-                            sio_address: publicAddress,
+                            sio_address: dbRobot.bridge_server,
                             sio_path: '/robot/socket.io',
                             sio_port: sioPort,
                         }, null, 4));
@@ -460,15 +465,37 @@ export class Robot {
     
                 } else { //invalid key
                     res.status(403);
+                    $d.err('Robot not found in GetDefaultConfig: '+req.query.id)
                     return res.send('Access denied, invalid credentials');
                 }
             });
     
         } else { //robot not found
-            res.status(403);
-            return res.send('Access denied, invalid credentials');
+            return res.status(403).send('Access denied, invalid credentials');
+        }
+    }
+
+    static async GetRegisteredBridgeServer(req:express.Request, res:express.Response, robotsCollection:Collection) {
+        if (!req.params.id || !ObjectId.isValid(req.params.id as string)) {
+            $d.err('Invalid id_robot provided in GetRegisteredBridgeServer: '+req.params.id)
+            return res.status(403).send();
         }
     
+        let searchId = new ObjectId(req.params.id as string);
+        const dbRobot = (await robotsCollection.findOne({_id: searchId }));
+    
+        if (dbRobot) {
+
+            res.setHeader('Content-Type', 'application/json');
+            return res.send(JSON.stringify({
+                id_robot: dbRobot._id.toString(),
+                bridge_server: dbRobot.bridge_server
+            }, null, 4));
+
+        } else {
+            $d.err('Robot not found in GetRegisteredBridgeServer: '+req.params.id)
+            return res.status(403).send();
+        }
     }
 
     public static FindConnected(idSearch:ObjectId):Robot|null {

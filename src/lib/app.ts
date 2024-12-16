@@ -157,16 +157,16 @@ export class App {
     
                 $d.l(('Registered new app id '+appReg.insertedId.toString()+' from '+remote_ip).yellow);
 
-                return res.redirect('/app/register?id='+appReg.insertedId.toString()+'&key='+setPassword);
+                return res.redirect('/app?id='+appReg.insertedId.toString()+'&key='+setPassword);
 
-                let new_config:any = {
-                    appId: appReg.insertedId.toString(),
-                    appKey: setPassword
-                };
+                // let new_config:any = {
+                //     appId: appReg.insertedId.toString(),
+                //     appKey: setPassword
+                // };
     
-                res.setHeader('Content-Type', 'application/json');
-                res.send(JSON.stringify(new_config, null, 4));
-                return;
+                // res.setHeader('Content-Type', 'application/json');
+                // res.send(JSON.stringify(new_config, null, 4));
+                // return;
     
             });
         });

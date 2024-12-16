@@ -140,7 +140,7 @@ https://bridge.phntm.io:1337/info (protected with admin password) \
 Provides various statistical information about the server utilization.
 
 ## TURN/STUN Server
-Phntm Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP and load-balanced independently.
+Phntm Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP.
 
 ### Install Coturn
 Coturn is a popular open-source TURN server, more at https://github.com/coturn/coturn
@@ -185,9 +185,11 @@ UDP	32355-65535
 
 ### Install TURN/STUN Credentials Receiver
 
-You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials with the Cloud Bridge. You can also use the command line utility `run.turn-sync.sh` of the Cloud Bridge package to selectively sync credentials with newly added TURN servers.
+You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials with the Cloud Bridge. Cloud Bridge pushes newly generated credentials to all TURN servers in its config on new robot registration.
 
-### Run coturn:
+You can also use the provided command line utility `run.turn-sync.sh` of the Cloud Bridge package to selectively sync credentials with newly added TURN servers.
+
+### Launch coturn:
 ```bash
 sudo systemctl start coturn
 sudo systemctl enable coturn # start on boot

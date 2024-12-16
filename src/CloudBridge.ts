@@ -29,7 +29,8 @@ if (!fs.existsSync(dir+'/config.jsonc')) {
 import * as JSONC from 'comment-json';
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
-const SIO_PORT:number = CONFIG['BRIDGE'].sioPort;
+const BRIDGE_SIO_PORT:number = CONFIG['BRIDGE'].bridgePort;
+const REGISTER_PORT:number = CONFIG['BRIDGE'].registerPort;
 const FILES_PORT:number = CONFIG['BRIDGE'].filesPort;
 const FILES_CACHE_DIR:string = CONFIG['BRIDGE'].filesCacheDir;
 if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
@@ -37,17 +38,29 @@ if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
     process.exit();
 };
 const DEFAULT_MAINTAINER_EMAIL:string = CONFIG['BRIDGE'].defaultMaintainerEmail;
-const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix;
-const PUBLIC_ADDRESS:string = CONFIG['BRIDGE'].address;
+
+const PUBLIC_REGISTER_ADDRESS:string = CONFIG['BRIDGE'].registerAddress; // this is geo loabalanced
+const PUBLIC_BRIDGE_ADDRESS:string = CONFIG['BRIDGE'].bridgeAddress; // this is not
+const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix; // this is shared by several bridge instances and geo loadbalanced
+
 const DB_URL:string = CONFIG.dbUrl;
-const SSL_CERT_PRIVATE = CONFIG['BRIDGE'].ssl.private;
-const SSL_CERT_PUBLIC = CONFIG['BRIDGE'].ssl.public;
+const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
+const BRIDGE_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].bridgeSsl.public;
+const REGISTER_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].registerSsl.private;
+const REGISTER_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].registerSsl.public;
 const DIE_ON_EXCEPTION:boolean = CONFIG.dieOnException;
-const certFiles:string[] = GetCerts(SSL_CERT_PRIVATE, SSL_CERT_PUBLIC);
-const HTTPS_SERVER_OPTIONS = {
-    key: fs.readFileSync(certFiles[0]),
-    cert: fs.readFileSync(certFiles[1]),
+
+const regCertFiles:string[] = GetCerts(REGISTER_SSL_CERT_PRIVATE, REGISTER_SSL_CERT_PUBLIC);
+const REGISTER_HTTPS_SERVER_OPTIONS = {
+    key: fs.readFileSync(regCertFiles[0]),
+    cert: fs.readFileSync(regCertFiles[1]),
 };
+const bridgeCertFiles:string[] = GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC);
+const BRIDGE_HTTPS_SERVER_OPTIONS = {
+    key: fs.readFileSync(bridgeCertFiles[0]),
+    cert: fs.readFileSync(bridgeCertFiles[1]),
+};
+
 const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
 
@@ -72,20 +85,19 @@ $d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
 console.log(' PHNTM CLOUD BRIDGE'.yellow);
 console.log('');
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/info                     System info').yellow);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/socket.io/         Robot API').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?yaml      Register new robot (YAML/JSON)').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/socket.io/           App API').green);
-console.log((' '+PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register             Register new App (JSON)').green);
-console.log((' Using certs: '), { key: certFiles[0], cert: certFiles[1] });
+console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml      Register new robot (YAML/JSON)').green);
+console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app             Register new App (JSON)').green);
+console.log('');
+console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info                     System info').yellow);
+console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/         Robot API').cyan);
+console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/app/socket.io/           App API').cyan);
 console.log('----------------------------------------------------------------------'.yellow);
-
-console.log('ICE SERVERS:');
-ICE_SERVERS.forEach((one)=>{
-    console.log('  '+one);
-});
-console.log('ICE sync servers: '+ICE_SYNC_SERVERS.length);
-console.log('ICE sync port: '+ICE_SYNC_PORT);
+console.log(('Using register certs: ').green, { key: regCertFiles[0], cert: regCertFiles[1] });
+console.log(('Using bridge certs: ').green, { key: bridgeCertFiles[0], cert: bridgeCertFiles[1] });
+console.log('Using ICE servers: '.green, ICE_SERVERS);
+console.log(('Total unique ICE servers to sync with: '+ICE_SYNC_SERVERS.length).green);
+console.log(('ICE sync port: '+ICE_SYNC_PORT).green);
+console.log('----------------------------------------------------------------------'.yellow);
 
 let db:Db = null;
 let humansCollection:Collection = null;
@@ -93,11 +105,14 @@ let robotsCollection:Collection = null;
 let robotLogsCollection:Collection = null;
 let appsCollection:Collection = null;
 
-const sioExpressApp = express();
-const sioHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, sioExpressApp);
+const registerExpressApp = express();
+const registerHttpServer = https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, registerExpressApp);
+
+const bridgeExpressApp = express();
+const bridgeHttpServer = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridgeExpressApp);
 
 const filesApp = express();
-const filesHttpServer = https.createServer(HTTPS_SERVER_OPTIONS, filesApp);
+const filesHttpServer = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, filesApp);
 
 process.on('uncaughtException', function(err) {
     $d.e('Caught unhandled exception: ', err);
@@ -245,7 +260,7 @@ function reject(res:any) {
 };
 
 const sioRobots:SocketIO.Server = new SocketIO.Server(
-    sioHttpServer, {
+    bridgeHttpServer, {
         pingInterval: 10000,
         pingTimeout: 60*1000,
         path: "/robot/socket.io/",
@@ -253,16 +268,16 @@ const sioRobots:SocketIO.Server = new SocketIO.Server(
     }
 );
 
-const sioHumans:SocketIO.Server = new SocketIO.Server(
-    sioHttpServer, {
-        pingInterval: 10000,
-        pingTimeout: 60*1000,
-        path: "/human/socket.io/"
-    }
-);
+// const sioHumans:SocketIO.Server = new SocketIO.Server(
+//     sioHttpServer, {
+//         pingInterval: 10000,
+//         pingTimeout: 60*1000,
+//         path: "/human/socket.io/"
+//     }
+// );
 
 const sioApps:SocketIO.Server = new SocketIO.Server(
-    sioHttpServer, {
+    bridgeHttpServer, {
         pingInterval: 10000,
         pingTimeout: 60*1000,
         path: "/app/socket.io/",
@@ -272,21 +287,23 @@ const sioApps:SocketIO.Server = new SocketIO.Server(
     }
 );
 
-sioExpressApp.get('/', function(req: any, res: any) {
+// return server info in json
+bridgeExpressApp.get('/', function(req: any, res: any) {
     res.setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify({
         phntm_cloud_bridge: Date.now(),
-        robot: PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/socket.io/',
-        new_robot_json: PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?json',
-        new_robot_yaml: PUBLIC_ADDRESS+':'+SIO_PORT+'/robot/register?yaml',
-        human: PUBLIC_ADDRESS+':'+SIO_PORT+'/human/socket.io/',
-        app: PUBLIC_ADDRESS+':'+SIO_PORT+'/app/socket.io/',
-        new_app_json: PUBLIC_ADDRESS+':'+SIO_PORT+'/app/register',
-        info: PUBLIC_ADDRESS+':'+SIO_PORT+'/info',
+        robot: PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/',
+        new_robot_json: PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?json',
+        new_robot_yaml: PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml',
+        // human: PUBLIC_BRIDGE_ADDRESS+':'+SIO_PORT+'/human/socket.io/',
+        app: PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/app/socket.io/',
+        new_app_json: PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app',
+        info: PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info',
     }, null, 4));
 });
 
-sioExpressApp.get('/info', function(req: any, res: any) {
+// get server utilization info
+bridgeExpressApp.get('/info', function(req: any, res: any) {
 
     if (!auth_admin(req)) {
         return reject(res);
@@ -358,31 +375,84 @@ sioExpressApp.get('/info', function(req: any, res: any) {
     res.send(JSON.stringify(info_data, null, 4));
 });
 
-sioExpressApp.get('/robot/register', async function(req:express.Request, res:express.Response) {
+
+
+registerExpressApp.get('/robot', async function(req:express.Request, res:express.Response) {
 
     if (req.query.id !== undefined || req.query.key !== undefined) {
         let robotUIAddress = UI_ADDRESS_PREFIX + req.query.id as string;
-        return Robot.GetDefaultConfig(req, res, 
-            robotsCollection, PUBLIC_ADDRESS, SIO_PORT,
+        return await Robot.GetDefaultConfig(req, res, 
+            robotsCollection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT,
             robotUIAddress,
             DEFAULT_MAINTAINER_EMAIL);
     }
     
-    return Robot.Register(
+    return await Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
         robotsCollection,
+        PUBLIC_BRIDGE_ADDRESS,
         ICE_SYNC_SERVERS,
         ICE_SYNC_PORT,
         ICE_SYNC_SECRET
     );
 });
 
-sioExpressApp.get('/app/register', async function(req:express.Request, res:express.Response) {
+registerExpressApp.use(express.json());
+registerExpressApp.post('/locate', async function(req:express.Request, res:express.Response) {
+
+    let appId:string = req.body['app_id'];
+    let appKey:string = req.body['app_key'];
+    let robotId:string = req.body['id_robot'];
+    
+    if (!appId || !ObjectId.isValid(appId) || !appKey) {
+        $d.err('Invalid app credentials provided in /locate: ', req.body)
+        return res.status(403).send('Access denied, invalid credentials');
+    }
+    if (!robotId || !ObjectId.isValid(robotId)) {
+        $d.err('Invalid id_robot provided in /locate: ', req.body)
+        return res.status(404).send('Robot not found');
+    }
+
+    let searchAppId = new ObjectId(appId);
+    const dbApp = (await appsCollection.findOne({_id: searchAppId }));
+    
+    if (dbApp) {
+        
+        return await bcrypt.compare(appKey, dbApp.key_hash, async (err:any, passRes:any) => {
+            if (passRes) { //pass match => good
+
+                let searchRobotId = new ObjectId(robotId as string);
+                const dbRobot = (await robotsCollection.findOne({_id: searchRobotId }));
+    
+                if (!dbRobot) {
+                    $d.err('Robot '+robotId+' not found in /locate')
+                    return res.status(404).send('Robot not found');
+                }
+
+                res.setHeader('Content-Type', 'application/json');
+                res.send(JSON.stringify({
+                    'id_robot': robotId,
+                    'bridge_server': dbRobot['bridge_server']
+                }, null, 4));
+
+            } else { // invalid app key
+                $d.err('Invalid app credentials provided in /locate: ', req.body)
+                return res.status(403).send('Access denied, invalid credentials');
+            }
+        });
+
+    } else { //robot not found
+        $d.err('Invalid app credentials provided in /locate: ', req.body)
+        return res.status(403).send('Access denied, invalid credentials');
+    }
+});
+
+registerExpressApp.get('/app', async function(req:express.Request, res:express.Response) {
 
     //return defaults for existing app
     if (req.query.id !== undefined || req.query.key !== undefined) { 
         return App.GetDefaultConfig(req, res, 
-            appsCollection, PUBLIC_ADDRESS, SIO_PORT);
+            appsCollection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT);
     }
 
     // register new app, sets name from ?name=
@@ -402,9 +472,14 @@ mongoClient.connect().then((client:MongoClient) => {
     robotLogsCollection = db.collection('robot_logs');
     appsCollection = db.collection('apps');
 
-    sioHttpServer.listen(SIO_PORT);
+    registerHttpServer.listen(REGISTER_PORT);
+    bridgeHttpServer.listen(BRIDGE_SIO_PORT);
     filesHttpServer.listen(FILES_PORT);
-    $d.l(('Socket.io listening on port '+SIO_PORT+', file forwarder on '+FILES_PORT).green);
+
+    $d.l(('Bridge Socket.io listening on port '+BRIDGE_SIO_PORT+', '+
+          'Register listening on port '+REGISTER_PORT+', '+
+          'file forwarder on '+FILES_PORT).green);
+
 }).catch(()=>{
     $d.err("Error connecting to", DB_URL);
     process.exit();
@@ -444,7 +519,6 @@ sioRobots.use(async(robotSocket:RobotSocket, next) => {
                 return next(err);
             }
         });
-
     } else { //robot not found
         $d.l(('Robot '+idRobot+' not found in db for '+robotSocket.handshake.address).red);
         const err = new Error("Access denied");
@@ -460,6 +534,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
                     robotSocket.handshake.auth.name :
                         (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
     robot.maintainer_email = robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email;
+    
     robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '';
     robot.git_sha = robotSocket.handshake.auth.git_sha ? robotSocket.handshake.auth.git_sha : '';
     robot.git_tag = robotSocket.handshake.auth.git_tag ? robotSocket.handshake.auth.git_tag : '';
@@ -471,7 +546,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.socket = robotSocket;
 
     robot.isConnected = true;
-    robot.logConnect(robotsCollection, robotLogsCollection);
+    robot.logConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);
 
     robot.topics = [];
     robot.services = [];
@@ -618,11 +693,12 @@ sioApps.use(async (appSocket:AppSocket, next) => {
         return next(err);
     }
 
-    if (!appKey) {
-        $d.err('Missin key from: '+idApp)
-        const err = new Error("Missing auth key");
-        return next(err);
-    }
+    // TODO: users will be authenticated here, not apps
+    // if (!appKey) {
+    //     $d.err('Missin key from: '+idApp)
+    //     const err = new Error("Missing auth key");
+    //     return next(err);
+    // }
 
     let searchId = new ObjectId(idApp);
     const dbApp = (await appsCollection.findOne({_id: searchId }));
@@ -630,18 +706,20 @@ sioApps.use(async (appSocket:AppSocket, next) => {
     if (dbApp) {
         let appName = dbApp.name;
         appSocket.handshake.auth.name = appName;
-        bcrypt.compare(appKey, dbApp.key_hash, function(err:any, res:any) {
-            if (res) { //pass match => good
+        // TODO: users will be authenticated here, not apps
+
+        // bcrypt.compare(appKey, dbApp.key_hash, function(err:any, res:any) {
+            // if (res) { //pass match => good
                 $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] connected from '+appSocket.handshake.address).green);
                 appSocket.dbData = dbApp;
                 return next();
 
-            } else { //invalid key
-                $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] auth failed for '+appSocket.handshake.address).red);
-                const err = new Error("Access denied");
-                return next(err);
-            }
-        });
+            // } else { //invalid key
+                // $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] auth failed for '+appSocket.handshake.address).red);
+                // const err = new Error("Access denied");
+                // return next(err);
+            // }
+        // });
 
     } else { //app not found
         $d.l(('App id '+idApp+' not found in db for '+appSocket.handshake.address).red);
@@ -1000,7 +1078,7 @@ function _Clear() {
     $d.log("Server exiting, cleaning up...");
 
     sioRobots.close();
-    sioHumans.close();
+    // sioHumans.close();
     sioApps.close();
 }
 
