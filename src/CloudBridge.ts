@@ -3,9 +3,9 @@ const startupTime:number = Date.now();
 import { Debugger } from './lib/debugger';
 const $d:Debugger = Debugger.Get('Cloud Bridge');
 
-import { GetCerts, UncaughtExceptionHandler } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
-const crypto = require('crypto')
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 import * as C from 'colors'; C; //force import typings with string prototype extension
@@ -42,6 +42,13 @@ const DEFAULT_MAINTAINER_EMAIL:string = CONFIG['BRIDGE'].defaultMaintainerEmail;
 const PUBLIC_REGISTER_ADDRESS:string = CONFIG['BRIDGE'].registerAddress; // this is geo loabalanced
 const PUBLIC_BRIDGE_ADDRESS:string = CONFIG['BRIDGE'].bridgeAddress; // this is not
 const UI_ADDRESS_PREFIX:string = CONFIG['BRIDGE'].uiAddressPrefix; // this is shared by several bridge instances and geo loadbalanced
+
+const VERBOSE_WEBRTC:boolean = CONFIG['BRIDGE'].verboseWebRTC;
+const VERBOSE_DEFS:boolean = CONFIG['BRIDGE'].verboseDefs;
+const VERBOSE_SERVICES:boolean = CONFIG['BRIDGE'].verboseServices;
+const VERBOSE_TOPICS:boolean = CONFIG['BRIDGE'].verboseTopics;
+const VERBOSE_NODES:boolean = CONFIG['BRIDGE'].verboseNodes;
+const VERBOSE_DOCKER:boolean = CONFIG['BRIDGE'].verboseDocker;
 
 const DB_URL:string = CONFIG.dbUrl;
 const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
@@ -157,80 +164,101 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
     }
     $d.l(('App #'+app.idApp.toString()+' inst #'+app.idInstance.toString()+' reguested '+req.params.FILE_URL+' for robot #'+id_robot).cyan);
 
-    let base = path.basename(req.params.FILE_URL)
-    let ext = path.extname(req.params.FILE_URL);
-    let hash = crypto.createHash('md5').update(req.params.FILE_URL).digest("hex");
-    let fname_cache = hash+'-'+base;
+    let fname_cache = GetCachedFileName(req.params.FILE_URL);
     
     let path_cache = FILES_CACHE_DIR ? FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache : null;
 
-    if (FILES_CACHE_DIR) {
+    if (!FILES_CACHE_DIR)  {
+        $d.e('Files chache dir not set');
+        return res.sendStatus(500); // not caching but should => internal server error
+    }
     
-        try {
-            await fs.promises.access(path_cache, fs.constants.R_OK);
-            $d.l(path_cache+' found in cache');
-    
-            return res.sendFile(path_cache, {}, function (err) {
-                try {
-                    if (err) {
-                        $d.e('Error seding cached file '+path_cache, err);
-                        return res.sendStatus(500); // internal server error
-                    }
-                    $d.l('Sent cached: ' + path_cache)
-                } catch (err1) {
-                    $d.l('Exception caught and ignored', err1);
-                }
-            });
-    
-        } catch (err) {
-            $d.l(fname_cache+' not found in cache');
+    try {
+        await fs.promises.access(path_cache, fs.constants.R_OK);
+        $d.l(path_cache+' found in cache');
 
-            // check cache folder
+        return res.sendFile(path_cache, {}, function (err) {
             try {
-                await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
+                if (err) {
+                    $d.e('Error seding cached file '+path_cache, err);
+                    return res.sendStatus(500); // internal server error
+                }
             } catch (err1) {
-                try {
-                    $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
-                    await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
-                } catch (err2) {
-                    if (err2.code != 'EEXIST') { // created since first check
-                        $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), err2);
-                        return res.sendStatus(500); // not caching but should => internal server error
-                    }
+                $d.l('Exception caught and ignored', err1);
+            }
+        });
+
+    } catch (err) {
+        $d.l(fname_cache+' not found in server cache');
+
+        // check cache folder
+        try {
+            await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
+        } catch (err1) {
+            try {
+                $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
+                await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
+            } catch (err2) {
+                if (err2.code != 'EEXIST') { // created since first check
+                    $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), err2);
+                    return res.sendStatus(500); // not caching but should => internal server error
                 }
             }
         }
     }
     
     // fetch the file from robot
-    $d.l('Fetching from robot... ');
+    $d.l('Fetching file from robot... ');
 
-    return robot.socket.emit('file', req.params.FILE_URL, (robot_res:any) => {
+    return robot.socket.emit('file', req.params.FILE_URL, async (robot_res:any) => {
 
-        if (!robot_res || robot_res.err){
+        if (!robot_res || robot_res.err || !robot_res.fileName) {
             $d.e('Robot returned error... ', robot_res);
             return res.sendStatus(404); // not found
         }
 
-        $d.l('Robot returned '+robot_res.length+' B');
+        $d.l(('Robot uploaded file '+robot_res.fileName).cyan);
 
-        if (FILES_CACHE_DIR) {
-            $d.l('  caching into '+path_cache);
-            fs.open(path_cache, 'w', null, (err:any, fd:any)=>{
-                if (err) {
-                    $d.e('Failed to open cache file for writing: '+path_cache);
-                    return;
-                }
-                fs.write(fd, robot_res, null, (err:any, bytesWritten:number) => {
-                    if (err) {
-                        $d.e('Failed to write cache file: '+err);
-                    }
-                    fs.closeSync(fd)
-                });
-            });
+        if (!path_cache.endsWith(robot_res.fileName)) {
+            $d.l('Robot returned wrong file name, requested: ', path_cache);
+            return res.sendStatus(404); // not found
         }
+
+        try {
+            await fs.promises.access(path_cache, fs.constants.R_OK);
+            return res.sendFile(path_cache, {}, function (err) {
+                try {
+                    if (err) {
+                        $d.e('Error seding cached file '+path_cache, err);
+                        return res.sendStatus(500); // internal server error
+                    }
+                } catch (err1) {
+                    $d.l('Exception caught and ignored', err1);
+                }
+            });
+
+        } catch (err) {
+            $d.l(fname_cache+' not found in server cache');
+            return res.sendStatus(404); // not found
+        }
+
+        // if (FILES_CACHE_DIR) {
+        //     $d.l('  caching into '+path_cache);
+        //     fs.open(path_cache, 'w', null, (err:any, fd:any)=>{
+        //         if (err) {
+        //             $d.e('Failed to open cache file for writing: '+path_cache);
+        //             return;
+        //         }
+        //         fs.write(fd, robot_res, null, (err:any, bytesWritten:number) => {
+        //             if (err) {
+        //                 $d.e('Failed to write cache file: '+err);
+        //             }
+        //             fs.closeSync(fd)
+        //         });
+        //     });
+        // }
         
-        return res.send(robot_res)
+        // return res.send(robot_res)
     });
 });
 
@@ -556,7 +584,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
     robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret }); // push this before peer info
 
-    robot.addToConnected(); // sends update to subscribers and peers to the robot
+    robot.addToConnected(VERBOSE_WEBRTC, VERBOSE_DEFS); // sends update to subscribers and peers to the robot
 
     robotSocket.on('peer:update', async function(update_data:any, return_callback:any) {
 
@@ -586,11 +614,15 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
             return;
 
         let msg_types:string[] = Object.keys(idls);
-        $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types:', msg_types);
+        if (VERBOSE_DEFS)
+            $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types:', msg_types);
+        else
+            $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types');
+
         robot.idls = idls;
 
-        robot.processIdls(()=>{ //on complete
-            robot.msgDefsToSubscribers();
+        robot.processIdls(VERBOSE_DEFS, ()=>{ //on complete
+            robot.msgDefsToSubscribers(VERBOSE_DEFS);
         });
     });
 
@@ -599,7 +631,11 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot, nodes);
+        if (VERBOSE_NODES)
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot, nodes);
+        else
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot);
+
         robot.nodes = nodes;
         robot.nodesToSubscribers();
     });
@@ -609,7 +645,11 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got '+topics.length+' topics from '+robot.idRobot, topics);
+        if (VERBOSE_TOPICS)
+            $d.l('Got '+topics.length+' topics from '+robot.idRobot, topics);
+        else
+            $d.l('Got '+topics.length+' topics from '+robot.idRobot);
+
         robot.topics = topics;
         robot.topicsToSubscribers();
     });
@@ -618,8 +658,12 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
+        
+        if (VERBOSE_SERVICES)
+            $d.l('Got '+services.length+' services from '+robot.idRobot, services);
+        else
+            $d.l('Got '+services.length+' services from '+robot.idRobot);
 
-        $d.l('Got '+services.length+' services from '+robot.idRobot, services);
         robot.services = services;
         robot.servicesToSubscribers();
     });
@@ -639,7 +683,10 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot, docker_updates);
+        if (VERBOSE_DOCKER)
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot, docker_updates);
+        else
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot);
         robot.docker_containers = docker_updates;
         robot.dockerContainersToSubscribers();
     });
@@ -777,7 +824,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.subscribeRobot(robot.idRobot, data.read, data.write);
         if (true) // TODO: check max peer number
-            robot.initPeer(app, data.read, data.write, returnCallback);
+            robot.initPeer(app, data.read, data.write, VERBOSE_WEBRTC, VERBOSE_DEFS, returnCallback);
         else
             robot.peersToToSubscribers();
     });
@@ -949,7 +996,11 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     });
 
     appSocket.on('sdp:answer', async function (data:{ id_robot:string, sdp:string}, returnCallback) {
-        $d.log('App sending sdp answer with:', data);
+
+        if (VERBOSE_WEBRTC)
+            $d.log('App sending sdp answer with:', data);
+        else
+            $d.log('App sending sdp answer');
 
         let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
         if (!robot)

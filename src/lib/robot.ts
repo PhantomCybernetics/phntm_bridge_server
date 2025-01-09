@@ -50,21 +50,22 @@ export class Robot {
 
     static connectedRobots:Robot[] = [];
 
-    public addToConnected() {
+    public addToConnected(verbose_webrtc:boolean, verbose_defs:boolean) {
         if (Robot.connectedRobots.indexOf(this) == -1) {
             Robot.connectedRobots.push(this);
             let robot = this;
             App.connectedApps.forEach(app => {
                 let sub:any = app.getRobotSubscription(this.idRobot);
                 if (sub) {
-                    $d.log('Stored sub: ', sub);
-                    robot.initPeer(app, sub.read, sub.write)
+                    if (verbose_webrtc)
+                        $d.log('Stored sub: ', sub);
+                    robot.initPeer(app, sub.read, sub.write, verbose_webrtc, verbose_defs)
                 }
             });
         }
     }
 
-    public initPeer(app:App, read?:string[], write?:string[][], returnCallback?:any) {
+    public initPeer(app:App, read:string[], write:string[][], verbose_webrtc:boolean, verbose_defs:boolean, returnCallback?:any) {
         let data = {
             id_app: app.idApp.toString(),
             id_instance: app.idInstance.toString(),
@@ -87,7 +88,10 @@ export class Robot {
                 returnCallback(answerData);
             } else {
                 app.socket.emit('robot', answerData, (app_answer_data:any) => {
-                    $d.log('Got app\'s answer:', app_answer_data);
+                    if (verbose_webrtc)
+                        $d.log('Got app\'s answer:', app_answer_data);
+                    else
+                        $d.log('Got app\'s answer');
                     delete app_answer_data['id_robot'];
                     app_answer_data['id_app'] = app.idApp.toString();
                     app_answer_data['id_instance'] = app.idInstance.toString();
@@ -99,7 +103,7 @@ export class Robot {
                 return;
 
             $d.log('Intilizing peer #'+app.idInstance.toString()+' with robot data of '+this.idRobot.toString());
-            this.pushMissingMsgDefsToPeer(app);
+            this.pushMissingMsgDefsToPeer(app, verbose_defs);
             app.socket.emit('nodes', this.labelSubsciberData(this.nodes));
             app.socket.emit('topics', this.labelSubsciberData(this.topics));
             app.socket.emit('services', this.labelSubsciberData(this.services));
@@ -153,7 +157,7 @@ export class Robot {
         return data;
     }
 
-    public processIdls(onComplete?:any):void {
+    public processIdls(verbose:boolean, onComplete?:any):void {
 
         let msg_types:string[] = Object.keys(this.idls);
         // let all_msg_defs:any[] = [];
@@ -161,12 +165,14 @@ export class Robot {
         msg_types.forEach((msg_type:string)=>{
             let idl:string = this.idls[msg_type];
             let defs:MessageDefinition[] = parseRos2idl(idl); // for ROS 2 definitions
-            $d.l(msg_type+' -> '+defs.length+' defs:');
+            if (verbose)
+                $d.l(msg_type+' -> '+defs.length+' defs:');
             for (let k = 0; k < defs.length; k++) {
                 let def = defs[k];
                 if (this.msg_defs[def.name])
                     continue; // only once per robot session
-                $d.l(def);
+                if (verbose)
+                    $d.l(def);
                 this.msg_defs[def.name] = def;
                 numProcessed++;
             }
@@ -178,7 +184,7 @@ export class Robot {
             onComplete();
     }
 
-    public pushMissingMsgDefsToPeer(app:App):void {
+    public pushMissingMsgDefsToPeer(app:App, verbose:boolean):void {
         let missing_app_defs:any[] = [];
         let def_types:string[] = Object.keys(this.msg_defs);
         def_types.forEach((def_type:string)=>{
@@ -190,17 +196,18 @@ export class Robot {
 
         if (missing_app_defs.length) {
             let robotDefsData:any = this.labelSubsciberData(missing_app_defs);
-            $d.l('Pushing '+missing_app_defs.length+' defs to '+app.idInstance.toString(), missing_app_defs);
+            if (verbose)
+                $d.l('Pushing '+missing_app_defs.length+' defs to '+app.idInstance.toString(), missing_app_defs);
             app.socket.emit('defs', robotDefsData);
         }
     }
 
-    public msgDefsToSubscribers():void {
+    public msgDefsToSubscribers(verbose:boolean):void {
         
         App.connectedApps.forEach(app => {
             if (!app.getRobotSubscription(this.idRobot))
                 return;
-            this.pushMissingMsgDefsToPeer(app);
+            this.pushMissingMsgDefsToPeer(app, verbose);
         });
     }
 

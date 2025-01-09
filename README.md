@@ -53,21 +53,32 @@ Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
   "dieOnException": true,
 
   "BRIDGE": {
-      "ssl": {
-          // use certbot or the ssl/gen.sh script for self signed dev certificates
-          "private": "/your_ssl_dir/private.pem",
-          "public": "/your_ssl_dir/fullchain.crt"
+      "registerAddress": "https://register.phntm.io", // this is geo balanced
+      "registerPort": 443,
+      "registerSsl": {
+          "private": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
+          "public": "/etc/letsencrypt/live/register.phntm.io/fullchain.pem"
       },
-      "admin": { // credentials required for password-protected APIs here
-            "username": "ADMIN_USER",
-            "password": "ADMIN_PASS"
+      "bridgeAddress": "https://us-ca.bridge.phntm.io", // this is not
+      "bridgePort": 1337,
+      "bridgeSsl": {
+          "private": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/privkey.pem",
+          "public": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/fullchain.pem"
       },
+      "admin": {
+          "username": "admin",
+          "password": "*******"	
+      },
+      "uiAddressPrefix": "https://bridge.phntm.io/", // this is shared by several bridge instances and geo loadbalanced
 
-      "sioPort": 1337, // socket.io port of this server
-      "address": "https://bridge.phntm.io", // address of this server
-      "uiAddressPrefix": "https://bridge.phntm.io/", // full prefix for robot UI links (ROBOT_ID will be appended)
       
-      "verbose": false,
+      "verboseDefs": false,
+      "verboseServices": false,
+      "verboseTopics": false,
+      "verboseNodes": false,
+      "verboseDocker": false,
+      "verboseWebRTC": false,
+
       "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
 
       "defaultMaintainerEmail": "robot.master@domain.com",
@@ -81,15 +92,20 @@ Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
       ]
   },
 
+  "FILE_RECEIVER": {
+    "uploadPort": 1336,
+    "incomingFilesTmpDir": "/home/ubuntu/file_fw_cache/tmp/",
+  },
+
   "ICE_SYNC": {
     "port": 1234, // stun/turn credential will be pushed to configured ice servers and this port
     "secret" : "SYNC_PASS" // secret matching credentials receiver config on each stun/turn server
   }
 }
 ```
-Note that in this cofiguration, ports 1337 and 1338 must be open to inboud TCP traffic!
+Note that in this cofiguration, ports 1336, 1337 and 1338 must be open to inboud TCP traffic!
 
-### Add system service to your systemd
+### Add system services to your systemd
 ```bash
 sudo vim /etc/systemd/system/phntm_cloud_bridge.service
 ```
@@ -111,15 +127,38 @@ StandardError=append:/var/log/cloud_bridge.err.log
 [Install]
 WantedBy=multi-user.target
 ```
+```bash
+sudo vim /etc/systemd/system/phntm_file_receiver.service
+```
+... and paste:
+```
+[Unit]
+Description=phntm file_receiver service
+After=network.target
+
+[Service]
+ExecStart=/home/ubuntu/cloud_bridge/run.file-receiver.sh
+Restart=always
+User=root
+Environment=NODE_ENV=production
+WorkingDirectory=/home/ubuntu/cloud_bridge/
+StandardOutput=append:/var/log/file_receiver.log
+StandardError=append:/var/log/file_receiver.err.log
+
+[Install]
+WantedBy=multi-user.target
+```
 Reload systemctl daemon
 ```bash
 sudo systemctl daemon-reload
 ```
 
-### Launch:
+### Enable on boot & Launch:
 ```bash
-sudo systemctl start phntm_cloud_bridge.service
 sudo systemctl enable phntm_cloud_bridge.service # will launch on boot
+sudo systemctl enable phntm_file_receiver.service # will launch on boot
+sudo systemctl start phntm_cloud_bridge.service
+sudo systemctl start phntm_file_receiver.service
 ```
 
 ## REST API

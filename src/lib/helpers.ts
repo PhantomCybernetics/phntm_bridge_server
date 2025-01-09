@@ -5,7 +5,8 @@ import * as express from "express";
 const fs = require('fs');
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId, FindCursor } from 'mongodb';
 // const yaml = require('js-yaml');
-
+const path = require('path');
+const crypto = require('crypto');
 
 export function ErrOutText(msg:string, res: any) {
     res.setHeader('Content-Type', 'text/plain');
@@ -46,5 +47,11 @@ export function Die (message?: string) : void{
     process.exit(1);
 }
 
+export function GetCachedFileName(fileUrl:string) : string{
+    let base = path.basename(fileUrl)
+    // let ext = path.extname(req.params.FILE_URL);
+    let hash = crypto.createHash('md5').update(fileUrl).digest("hex");
+    return hash+'-'+base;
+}
 
 
