@@ -127,6 +127,7 @@ StandardError=append:/var/log/cloud_bridge.err.log
 [Install]
 WantedBy=multi-user.target
 ```
+Same for the file receiver:
 ```bash
 sudo vim /etc/systemd/system/phntm_file_receiver.service
 ```
