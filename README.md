@@ -71,6 +71,8 @@ Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
       },
       "uiAddressPrefix": "https://bridge.phntm.io/", // this is shared by several bridge instances and geo loadbalanced
 
+      "sesAWSRegion": "us-west-1", // emails via SES
+      "emailSender": "Phantom Bridge <no-reply@phntm.io>",
       
       "verboseDefs": false,
       "verboseServices": false,

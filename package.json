@@ -35,6 +35,7 @@
     "engine.io": "6.5.1"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.723.0",
     "@foxglove/message-definition": "^0.3.0",
     "@foxglove/rosmsg": "^4.2.2",
     "@types/ejs": "^3.1.2",

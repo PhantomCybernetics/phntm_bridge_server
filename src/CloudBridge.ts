@@ -3,7 +3,9 @@ const startupTime:number = Date.now();
 import { Debugger } from './lib/debugger';
 const $d:Debugger = Debugger.Get('Cloud Bridge');
 
-import { GetCerts, UncaughtExceptionHandler, GetCachedFileName } from './lib/helpers'
+import { SESClient } from "@aws-sdk/client-ses";
+
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -87,6 +89,10 @@ if (ICE_SERVERS) {
 }
 const ICE_SYNC_PORT:number = CONFIG['ICE_SYNC'].port;
 const ICE_SYNC_SECRET:string = CONFIG['ICE_SYNC'].secret;
+
+const SES_AWS_REGION:string = CONFIG['BRIDGE'].sesAWSRegion;
+const sesClient = new SESClient({ region: SES_AWS_REGION });
+const EMAIL_SENDER:string = CONFIG['BRIDGE'].emailSender;
 
 $d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
@@ -572,6 +578,23 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     robot.isAuthentificated = true;
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
     robot.socket = robotSocket;
+
+    if (robot.maintainer_email != robotSocket.dbData.maintainer_email || robot.name != robotSocket.dbData.name) {
+        if (robot.maintainer_email) {
+            $d.log('Robot name or maintainer\'s e-mail of '+robot.idRobot.toString()+' changed, sending link...');
+            let subject = robot.name + ' on Phantom Bridge';
+            let body = 'Hello,\n' +
+                       '\n' +
+                       'Your robot '+robot.name+' is available at:\n' +
+                       '\n' +
+                       UI_ADDRESS_PREFIX + robot.idRobot.toString() + '\n' +
+                       '\n' +
+                       'Read the docs here: https://docs.phntm.io/bridge' + '\n' +
+                       '\n' +
+                       '- Phantom Bridge';
+            SendEmail(robot.maintainer_email, subject, body, EMAIL_SENDER, sesClient);
+        }
+    }
 
     robot.isConnected = true;
     robot.logConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);

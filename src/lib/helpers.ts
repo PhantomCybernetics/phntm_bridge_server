@@ -8,6 +8,8 @@ import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId, Fin
 const path = require('path');
 const crypto = require('crypto');
 
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+
 export function ErrOutText(msg:string, res: any) {
     res.setHeader('Content-Type', 'text/plain');
     res.send(msg);
@@ -54,4 +56,21 @@ export function GetCachedFileName(fileUrl:string) : string{
     return hash+'-'+base;
 }
 
-
+export async function SendEmail(to: string, subject: string, body: string, sender:string, sesClient:SESClient) {
+    const params = {
+        Destination: { ToAddresses: [to] },
+        Message: {
+            Body: { Text: { Data: body } },
+            Subject: { Data: subject },
+        },
+        Source: sender,
+    };
+  
+    try {
+        const command = new SendEmailCommand(params);
+        const response = await sesClient.send(command);
+        $d.log("Email sent successfully:", response.MessageId);
+    } catch (error) {
+        $d.err("Error sending email:", error);
+    }
+  }
