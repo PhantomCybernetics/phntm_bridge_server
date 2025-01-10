@@ -186,7 +186,7 @@ Fetching `https://register.phntm.io/app` (GET) registers a new App on this serve
 `https://us-ca.bridge.phntm.io:1337/info` (GET, protected with admin password) \
 Provides various statistical information about the server instance utilization.
 
-### File Uploader API
+### File Receiver API
 
 The File Receiver server shipped with Coud Bridge comes with its own REST API for handling file uploads and cache cleanup:
 `https://us-ca.bridge.phntm.io:1336/upload` (POST) receives one file chunk at the time; expects params `file` and `json` {fileUrl, idRobot, authKey}
