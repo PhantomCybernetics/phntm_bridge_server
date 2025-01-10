@@ -5,7 +5,7 @@ import { GetCachedFileName, GetCerts } from './lib/helpers'
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId } from 'mongodb';
 
 import { Debugger } from './lib/debugger';
-const $d:Debugger = Debugger.Get('TURN Sync');
+const $d:Debugger = Debugger.Get('Files');
 import * as C from 'colors'; C; //force import typings with string prototype extension
 
 const bcrypt = require('bcrypt-nodejs');
@@ -157,6 +157,31 @@ app.post('/complete', express.json(), async (req:any, res:any) => {
   } catch (error) {
     $d.e('Error completing file upload:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/clear_cache', express.json(), async (req:any, res:any) => {
+  try {
+
+    const { idRobot, authKey } = req.body;
+    const clearPath = path.join(FILES_CACHE_DIR+'/'+idRobot);
+
+    await checkAuth(idRobot, authKey)
+      .then(async()=>{
+    
+        $d.log('['+idRobot+'] '+('Clearing files cache').green);
+    
+        await fs.remove(clearPath);
+        
+        res.send('Cloud file cache cleared');
+      })
+      .catch(()=>{
+        res.status(403).send('Invalid credentials provided');
+      });
+
+  } catch (error) {
+    $d.e('Error completing clear cache request:', error);
+    res.status(500).send('Error completing clear cache request');
   }
 });
 

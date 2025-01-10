@@ -449,7 +449,7 @@ export class Robot {
                         cfg = cfg.replace('%ROBOT_KEY%', req.query.key as string);
                         cfg = cfg.replace('%MAINTAINER_EMAIL%', defaultMaintainerEmail);
     
-                        cfg = cfg.replace('%SIO_ADDRESS%', dbRobot.bridge_server);
+                        cfg = cfg.replace('%CLOUD_BRIDGE_ADDRESS%', dbRobot.bridge_server);
                         cfg = cfg.replace('%SIO_PATH%', '/robot/socket.io');
                         cfg = cfg.replace('%SIO_PORT%', sioPort.toString());
     
@@ -464,7 +464,7 @@ export class Robot {
                         return res.send(JSON.stringify({
                             id_robot: dbRobot._id.toString(),
                             key: req.query.key,
-                            sio_address: dbRobot.bridge_server,
+                            cloud_bridge_address: dbRobot.bridge_server,
                             sio_path: '/robot/socket.io',
                             sio_port: sioPort,
                         }, null, 4));
