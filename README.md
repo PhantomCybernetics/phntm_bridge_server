@@ -175,7 +175,7 @@ Fetching `https://register.phntm.io/robot?yaml` (GET) registers a new robot and 
 Calling `https://register.phntm.io/robot?json` also registers a new robot, but returns a simplyfied JSON.
 
 > [!NOTE]
-> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Cloud Bridge host nearest to you.
+> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Cloud Bridge host nearest to you, such as `us-ca.bridge.phntm.io`.
 
 ### Registering a new App
 
