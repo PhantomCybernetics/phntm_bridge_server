@@ -188,10 +188,15 @@ Provides various statistical information about the server instance utilization.
 
 ### File Receiver API
 
-The File Receiver server shipped with Coud Bridge comes with its own REST API for handling file uploads and cache cleanup:
-`https://us-ca.bridge.phntm.io:1336/upload` (POST) receives one file chunk at the time; expects params `file` and `json` {fileUrl, idRobot, authKey}
-`https://us-ca.bridge.phntm.io:1336/complete` (POST) combines uploaded chunks; expects params `json` {idRobot, authKey, fileUrl, totalParts}
-`https://us-ca.bridge.phntm.io:1336/clear_cache` (POST) clears robot's server file cache; expects params `json` {idRobot, authKey}
+The File Receiver server shipped with Coud Bridge comes with its own REST API for handling file uploads and cache cleanup: \
+`https://us-ca.bridge.phntm.io:1336/upload` (POST) \
+Receives one file chunk at the time; expects params `file` and `json` {fileUrl, idRobot, authKey} \
+ \
+`https://us-ca.bridge.phntm.io:1336/complete` (POST) \
+Combines uploaded chunks; expects params `json` {idRobot, authKey, fileUrl, totalParts} \
+ \
+`https://us-ca.bridge.phntm.io:1336/clear_cache` (POST) \
+Clears robot's server file cache; expects params `json` {idRobot, authKey}
 
 ## TURN/STUN Server
 Phantom Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between the peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP. Secure ICE credentials for each robot are generated during registration and synced with the ICE servers listed in the Cloud Bridge's config file.
