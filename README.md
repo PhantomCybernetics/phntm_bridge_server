@@ -2,13 +2,15 @@
 
 This server facilitates WebRTC P2P connection between a Phantom Bridge node running on a robot, and the Bridge Web UI, or any similar clients using this API.
 
-The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization withour recording any peer communication.
+The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization without recording any peer communication.
 
 Cloud Bridge also relies messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, robot introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server and only uses a TURN server when P2P connection is not possible. See TURN Server below.
 
 The server also parses and caches the ROS .idl files for all message and service types discovered on the robot by phntm_bridge. These are converted to JSON and pushed into peers such as the Phntm WEB UI, making consistent bi-directional message serialization and deserialization possible. Message definitions are loaded fresh on every robot connection, and cached in memory for the time robot remains connected.
 
 Cloud bridge also forwards files requested by a peer App (UI) from the robot's filesystem. This is very useful for instance for extracting robot's URFF model components, such as meshes, textures and materials. These files are chached here in /file_fw_cache for faster replies that don't repeatedly exhaust robot's network connectivity.
+
+In order to provide a secure STUN/TURN service, the Cloud Bridge also synchronizes robot's credentials (ID and ICE secret) with the list of configured ICE servers.
 
 ![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Cloud_Bridge.png)
 
@@ -168,21 +170,31 @@ sudo systemctl start phntm_file_receiver.service
 
 ### Registering a new Robot
 
-Fetching https://bridge.phntm.io:1337/robot/register?yaml registers a new robot and returns a default configuration YAML file for your phntm_bridge. This uses robot_config.templ.yaml as a template. 
+Fetching `https://register.phntm.io/robot?yaml` (GET) registers a new robot and returns a default configuration YAML file for your phntm_bridge. This uses robot_config.templ.yaml as a template. 
 
-Calling https://bridge.phntm.io:1337/robot/register?json also registers a new robot, but returns a JSON.
+Calling `https://register.phntm.io/robot?json` also registers a new robot, but returns a simplyfied JSON.
+
+> [!NOTE]
+> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Cloud Bridge host nearest to you.
 
 ### Registering a new App
 
-Fetching https://bridge.phntm.io:1337/app/register registers a new App on this server and returns a JSON with generated app id and a secret key. Phntm Web UI forks and other services using this API are considered individual apps and need to refister first
+Fetching `https://register.phntm.io/app` (GET) registers a new App on this server and returns a JSON with generated app id and a secret key. Phntm Web UI forks and other services using this API are considered individual apps and need to be registered first.
 
 ### Server status
 
-https://bridge.phntm.io:1337/info (protected with admin password) \
-Provides various statistical information about the server utilization.
+`https://us-ca.bridge.phntm.io:1337/info` (GET, protected with admin password) \
+Provides various statistical information about the server instance utilization.
+
+### File Uploader API
+
+The File Receiver server shipped with Coud Bridge comes with its own REST API for handling file uploads and cache cleanup:
+`https://us-ca.bridge.phntm.io:1336/upload` (POST) receives one file chunk at the time; expects params `file` and `json` {fileUrl, idRobot, authKey}
+`https://us-ca.bridge.phntm.io:1336/complete` (POST) combines uploaded chunks; expects params `json` {idRobot, authKey, fileUrl, totalParts}
+`https://us-ca.bridge.phntm.io:1336/clear_cache` (POST) clears robot's server file cache; expects params `json` {idRobot, authKey}
 
 ## TURN/STUN Server
-Phntm Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP.
+Phantom Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between the peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP. Secure ICE credentials for each robot are generated during registration and synced with the ICE servers listed in the Cloud Bridge's config file.
 
 ### Install Coturn
 Coturn is a popular open-source TURN server, more at https://github.com/coturn/coturn
