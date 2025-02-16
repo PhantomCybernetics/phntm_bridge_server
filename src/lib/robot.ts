@@ -164,7 +164,16 @@ export class Robot {
         let numProcessed = 0;
         msg_types.forEach((msg_type:string)=>{
             let idl:string = this.idls[msg_type];
-            let defs:MessageDefinition[] = parseRos2idl(idl); // for ROS 2 definitions
+            let defs:MessageDefinition[] = [];
+            try {
+                defs = parseRos2idl(idl); // for ROS 2 definitions
+            } catch (e) {
+                $d.e('Exception while processing idl for '+msg_type+'; ignoring');
+                if (verbose) {
+                    $d.l(this.idls[msg_type]);
+                }
+                return;
+            }
             if (verbose)
                 $d.l(msg_type+' -> '+defs.length+' defs:');
             for (let k = 0; k < defs.length; k++) {
