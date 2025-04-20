@@ -25,9 +25,9 @@ export class App {
         id_robot: ObjectId,
         read?:string[],
         write?:string[][],
-        con_state?:string,
-        con_method?:string,
-        turn_ip?:string
+        wrtc_connection_state?:string,
+        wrtc_connection_method?:string,
+        wrtc_connection_ip?:string
     }[]
 
     static connectedApps:App[] = [];

@@ -364,9 +364,9 @@ bridgeExpressApp.get('/info', function(req: any, res: any) {
             for (let j = 0; j < App.connectedApps[i].robotSubscriptions.length; j++) {
                 let id_robot:string = App.connectedApps[i].robotSubscriptions[j].id_robot.toString();
                 subs[id_robot] = {
-                    connection_state: App.connectedApps[i].robotSubscriptions[j].con_state,
-                    method: App.connectedApps[i].robotSubscriptions[j].con_method,
-                    turn_ip: App.connectedApps[i].robotSubscriptions[j].turn_ip,
+                    wrtc_connection_state: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_state,
+                    wrtc_connection_method: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_method,
+                    wrtc_connection_ip: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_ip,
                 };
                 if (!peers_subscribed_to_robot[id_robot])
                     peers_subscribed_to_robot[id_robot] = [];
@@ -1077,7 +1077,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         robot.broadcastPeerServiceCall(app, data.service, data.msg);
     });
 
-    appSocket.on('con-info', async function (data:{ id_robot:string, state: string, method?:string, turn_ip?:string}) {
+    appSocket.on('wrtc-info', async function (data:{ id_robot:string, state: string, method?:string, ip?:string}) {
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot))
             return false;
@@ -1088,11 +1088,21 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         if (!sub)
             return false;
         
-        sub.con_state = data.state;
-        sub.con_method = data.method;
-        sub.turn_ip = data.turn_ip;
+        sub.wrtc_connection_state = data.state;
+        sub.wrtc_connection_method = data.method;
+        sub.wrtc_connection_ip = data.ip;
 
         $d.log('Got app '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') robot connection info:', data);
+
+        // pass back to the robot to handle failures
+        let robot = Robot.FindConnected(id_robot);
+        if (robot && robot.socket) {
+            robot.socket.emit('peer:wrtc-info', {
+                id_app: app.idApp.toString(),
+                id_instance: app.idInstance.toString(),
+                state: sub.wrtc_connection_state,
+            });
+        }
 
         return true;
     });
