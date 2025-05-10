@@ -88,6 +88,8 @@ export class Robot {
                 returnCallback(answerData);
             } else {
                 app.socket.emit('robot', answerData, (app_answer_data:any) => {
+                    if (!that.socket)
+                        return;
                     if (verbose_webrtc)
                         $d.log('Got app\'s answer:', app_answer_data);
                     else
