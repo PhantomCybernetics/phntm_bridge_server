@@ -577,7 +577,7 @@ export class Robot {
               cfg = cfg.replace("%MAINTAINER_EMAIL%", defaultMaintainerEmail);
 
               cfg = cfg.replace(
-                "%bridge_client_address%",
+                "%bridge_server_address%",
                 dbRobot.bridge_server,
               );
               cfg = cfg.replace("%SIO_PATH%", "/robot/socket.io");
@@ -599,7 +599,7 @@ export class Robot {
                   {
                     id_robot: dbRobot._id.toString(),
                     key: req.query.key,
-                    bridge_client_address: dbRobot.bridge_server,
+                    bridge_server_address: dbRobot.bridge_server,
                     sio_path: "/robot/socket.io",
                     sio_port: sioPort,
                   },
