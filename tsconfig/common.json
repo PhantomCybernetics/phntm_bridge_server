@@ -1,16 +1,16 @@
 {
-    "compilerOptions": {
-        "outDir": "./../build",
-        "allowJs": true,
-        "target": "es5",
-        "lib": [
-            "es5",
-            "es2015.symbol"
-        ],
-        "noEmitOnError" : true,
-        "noImplicitAny" : true
-    },
-    "exclude" : [
-        "node_modules"
-    ]
+  "compilerOptions": {
+    "outDir": "./../build",
+    "allowJs": true,
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true,
+    "noImplicitAny": true
+  },
+  "exclude": ["node_modules"]
 }
