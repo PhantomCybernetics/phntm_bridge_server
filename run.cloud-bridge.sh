@@ -17,7 +17,7 @@ echo -e "\033[32m[launching Bridge Server Synchronizer...]\033[0m"
 clear
 
 # Start the Node.js process
-tsx ./src/CloudBridge.js "$@"
+./node_modules/.bin/tsx ./src/CloudBridge.js "$@"
 PID=$!
 
 # Wait for the process to complete
