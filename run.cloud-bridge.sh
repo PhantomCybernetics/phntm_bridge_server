@@ -13,7 +13,7 @@ cleanup() {
 # Set up signal handlers
 trap cleanup TERM INT
 
-echo -e "\033[32m[launching TURN Synchronizer...]\033[0m"
+echo -e "\033[32m[launching Bridge Server Synchronizer...]\033[0m"
 clear
 
 # Start the Node.js process
