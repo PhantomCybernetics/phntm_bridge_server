@@ -9,10 +9,10 @@
   ros__parameters:
     id_robot: %ROBOT_ID%
     key: %ROBOT_KEY%
-    name: 'Unnamed Robot'
-    maintainer_email: '%MAINTAINER_EMAIL%' # e-mail for service announcements
-    
-    cloud_bridge_address: %CLOUD_BRIDGE_ADDRESS% # Cloud Bridge to connect to, see https://docs.phntm.io/bridge/availability-zones.html
+    name: "Unnamed Robot"
+    maintainer_email: "%MAINTAINER_EMAIL%" # e-mail for service announcements
+
+    bridge_client_address: %bridge_client_address% # Bridge Server to connect to, see https://docs.phntm.io/bridge/availability-zones.html
 
     ## Socket.io config
     # sio_ssl_verify: True
@@ -42,7 +42,7 @@
 
     ## Services collapsed by default in the UI menu
     ## (srv_type or service id)
-    collapse_services: 
+    collapse_services:
       - rcl_interfaces/srv/DescribeParameters
       - rcl_interfaces/srv/GetParameterTypes
       - rcl_interfaces/srv/GetParameters
@@ -53,7 +53,7 @@
 
     ## Blacklisted services (not available in the UI)
     ## (srv_type or service id)
-    # blacklist_services: 
+    # blacklist_services:
     #  - /phntm_agent/iw_scan
 
     ## Custom topic configs
@@ -68,15 +68,16 @@
     # /battery:
     #  min_voltage: 9.0 # set empty voltage
     #  max_voltage: 12.6 # set set full voltage
-    
-    ui_battery_topic: '' # battery to show in the UI (e.g. /battery), '' to disable
 
-    ui_wifi_monitor_topic: '/iw_status' # WiFi monitor topic to show in the UI
+    ui_battery_topic: "" # battery to show in the UI (e.g. /battery), '' to disable
+
+    ui_wifi_monitor_topic: "/iw_status" # WiFi monitor topic to show in the UI
     ui_enable_wifi_scan: True
     ui_enable_wifi_roam: False
 
     ui_docker_control: True # Docker control via Agent
     docker_monitor_topic: /docker_info # produced by Agent
+
 
     ## User input config
     # input_drivers: [ 'Joy', 'Twist' ] # enabled input drivers
