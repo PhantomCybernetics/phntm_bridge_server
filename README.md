@@ -1,20 +1,20 @@
-# Phantom Cloud Bridge
+# Phantom Bridge Server
 
-This server facilitates WebRTC P2P connection between a Phantom Bridge node running on a robot, and the Bridge Web UI, or any similar clients using this API.
+This server facilitates WebRTC P2P connection between a Phantom Bridge Client node running on a robot, and the Bridge Web UI, or any similar clients using this API.
 
 The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization without recording any peer communication.
 
-Cloud Bridge also relies messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, robot introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server and only uses a TURN server when P2P connection is not possible. See TURN Server below.
+Bridge Server also relies messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, robot introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server and only uses a TURN server when P2P connection is not possible. See TURN Server below.
 
 The server also parses and caches the ROS .idl files for all message and service types discovered on the robot by phntm_bridge. These are converted to JSON and pushed into peers such as the Phntm WEB UI, making consistent bi-directional message serialization and deserialization possible. Message definitions are loaded fresh on every robot connection, and cached in memory for the time robot remains connected.
 
-Cloud bridge also forwards files requested by a peer App (UI) from the robot's filesystem. This is very useful for instance for extracting robot's URFF model components, such as meshes, textures and materials. These files are chached here in /file_fw_cache for faster replies that don't repeatedly exhaust robot's network connectivity.
+Bridge Server also forwards files requested by a peer App (UI) from the robot's filesystem. This is very useful for instance for extracting robot's URFF model components, such as meshes, textures and materials. These files are chached here in /file_fw_cache for faster replies that don't repeatedly exhaust robot's network connectivity.
 
-In order to provide a secure STUN/TURN service, the Cloud Bridge also synchronizes robot's credentials (ID and ICE secret) with the list of configured ICE servers.
+In order to provide a secure STUN/TURN service, the Bridge Server also synchronizes robot's credentials (ID and ICE secret) with the list of configured ICE servers.
 
 ![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Cloud_Bridge.png)
 
-## Install Cloud Bridge
+## Install Bridge Server
 
 ### Install Node.js
 Last tested v18.20.5
@@ -42,13 +42,13 @@ sudo systemctl enable mongod # run at boot
 ### Clone this repo and install Node dependencies
 ```bash
 cd ~
-git clone git@github.com:PhantomCybernetics/cloud_bridge.git cloud_bridge
-cd cloud_bridge
+git clone git@github.com:PhantomCybernetics/phntm_bridge_server.git phntm_bridge_server
+cd phntm_bridge_server
 npm install
 ```
 
 ### Create a config file
-Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
+Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
 ```jsonc
 {
   "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
@@ -111,22 +111,22 @@ Note that in this cofiguration, ports 1336, 1337 and 1338 must be open to inboud
 
 ### Add system services to your systemd
 ```bash
-sudo vim /etc/systemd/system/phntm_cloud_bridge.service
+sudo vim /etc/systemd/system/phntm_bridge_server.service
 ```
 ... and paste:
 ```
 [Unit]
-Description=phntm cloud_bridge service
+Description=phntm bridge_server service
 After=network.target
 
 [Service]
-ExecStart=/home/ubuntu/cloud_bridge/run.cloud-bridge.sh
+ExecStart=/home/ubuntu/phntm_bridge_server/run.bridge-server.sh
 Restart=always
 User=root
 Environment=NODE_ENV=production
-WorkingDirectory=/home/ubuntu/cloud_bridge/
-StandardOutput=append:/var/log/cloud_bridge.log
-StandardError=append:/var/log/cloud_bridge.err.log
+WorkingDirectory=/home/ubuntu/phntm_bridge_server/
+StandardOutput=append:/var/log/phntm_bridge_server.log
+StandardError=append:/var/log/phntm_bridge_server.err.log
 
 [Install]
 WantedBy=multi-user.target
@@ -142,11 +142,11 @@ Description=phntm file_receiver service
 After=network.target
 
 [Service]
-ExecStart=/home/ubuntu/cloud_bridge/run.file-receiver.sh
+ExecStart=/home/ubuntu/phntm_bridge_server/run.file-receiver.sh
 Restart=always
 User=root
 Environment=NODE_ENV=production
-WorkingDirectory=/home/ubuntu/cloud_bridge/
+WorkingDirectory=/home/ubuntu/phntm_bridge_server/
 StandardOutput=append:/var/log/file_receiver.log
 StandardError=append:/var/log/file_receiver.err.log
 
@@ -160,9 +160,9 @@ sudo systemctl daemon-reload
 
 ### Enable on boot & Launch:
 ```bash
-sudo systemctl enable phntm_cloud_bridge.service # will launch on boot
+sudo systemctl enable phntm_bridge_server.service # will launch on boot
 sudo systemctl enable phntm_file_receiver.service # will launch on boot
-sudo systemctl start phntm_cloud_bridge.service
+sudo systemctl start phntm_bridge_server.service
 sudo systemctl start phntm_file_receiver.service
 ```
 
@@ -175,7 +175,7 @@ Fetching `https://register.phntm.io/robot?yaml` (GET) registers a new robot and 
 Calling `https://register.phntm.io/robot?json` also registers a new robot, but returns a simplyfied JSON.
 
 > [!NOTE]
-> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Cloud Bridge host nearest to you, such as `us-ca.bridge.phntm.io`.
+> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Bridge Server instance nearest to you, such as `us-ca.bridge.phntm.io`.
 
 ### Registering a new App
 
@@ -199,7 +199,7 @@ Combines uploaded chunks; expects params `json` {idRobot, authKey, fileUrl, tota
 Clears robot's server file cache; expects params `json` {idRobot, authKey}
 
 ## TURN/STUN Server
-Phantom Cloud Bridge needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between the peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP. Secure ICE credentials for each robot are generated during registration and synced with the ICE servers listed in the Cloud Bridge's config file.
+Phantom Bridge Server needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between the peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP. Secure ICE credentials for each robot are generated during registration and synced with the ICE servers listed in the Bridge Server's config file.
 
 ### Install Coturn
 Coturn is a popular open-source TURN server, more at https://github.com/coturn/coturn
@@ -244,9 +244,9 @@ UDP	32355-65535
 
 ### Install TURN/STUN Credentials Receiver
 
-You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials with the Cloud Bridge. Cloud Bridge pushes newly generated credentials to all TURN servers in its config on new robot registration.
+You will also need the [ice_creds_receiver](https://github.com/PhantomCybernetics/ice_creds_receiver) service to synchronize STUN/TURN credentials with the Bridge Server. Bridge Server pushes newly generated credentials to all TURN servers in its config on new robot registration.
 
-You can also use the provided command line utility `run.turn-sync.sh` of the Cloud Bridge package to selectively sync credentials with newly added TURN servers.
+You can also use the provided command line utility `run.turn-sync.sh` of the Bridge Server package to selectively sync credentials with newly added TURN servers.
 
 ### Launch coturn:
 ```bash
