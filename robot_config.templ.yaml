@@ -52,6 +52,8 @@
     # blacklist_services: 
     #  - /phntm_agent/iw_scan
 
+    encoder_hw_device_default: '' # 'cuda' for Nvidia, 'vaapi' for AMD or '' for CPU
+
     ## Custom topic configs
     /robot_description:
       reliability: 1 # Reliable
