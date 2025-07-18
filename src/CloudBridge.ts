@@ -218,7 +218,6 @@ filesApp.get(
     let auth_ok = false;
     let app: App = null;
     for (let i = 0; i < App.connectedApps.length; i++) {
-      let id_app: string = (App.connectedApps[i].idApp as ObjectId).toString();
       app = App.connectedApps[i];
       if (req.params.SECRET == App.connectedApps[i].filesSecret.toString()) {
         auth_ok = true;
@@ -253,9 +252,7 @@ filesApp.get(
     }
     $d.l(
       (
-        "App #" +
-        app.idApp.toString() +
-        " inst #" +
+        "App inst #" +
         app.idInstance.toString() +
         " reguested " +
         req.params.FILE_URL +
@@ -476,8 +473,6 @@ bridgeExpressApp.get("/info", function (req: any, res: any) {
 
   let appsData = [];
   for (let i = 0; i < App.connectedApps.length; i++) {
-    let id_app: string = (App.connectedApps[i].idApp as ObjectId).toString();
-
     let subs: any = {};
     if (App.connectedApps[i].robotSubscriptions) {
       for (let j = 0; j < App.connectedApps[i].robotSubscriptions.length; j++) {
@@ -494,17 +489,12 @@ bridgeExpressApp.get("/info", function (req: any, res: any) {
         if (!peers_subscribed_to_robot[id_robot])
           peers_subscribed_to_robot[id_robot] = [];
         peers_subscribed_to_robot[id_robot].push({
-          id: id_app,
           inst: App.connectedApps[i].idInstance.toString(),
         });
       }
     }
 
     appsData.push({
-      id: id_app,
-      name: App.connectedApps[i].name
-        ? App.connectedApps[i].name
-        : "Unnamed App",
       inst: App.connectedApps[i].idInstance,
       ip: App.connectedApps[i].socket.handshake.address,
       subscriptions: subs,
@@ -535,7 +525,7 @@ bridgeExpressApp.get("/info", function (req: any, res: any) {
   }
 
   info_data["robots"] = robotsData;
-  info_data["apps"] = appsData;
+  info_data["appInstances"] = appsData;
 
   res.send(JSON.stringify(info_data, null, 4));
 });
@@ -573,86 +563,32 @@ registerExpressApp.use(express.json());
 registerExpressApp.post(
   "/locate",
   async function (req: express.Request, res: express.Response) {
-    let appId: string = req.body["app_id"];
-    let appKey: string = req.body["app_key"];
     let robotId: string = req.body["id_robot"];
-
-    if (!appId || !ObjectId.isValid(appId) || !appKey) {
-      $d.err("Invalid app credentials provided in /locate: ", req.body);
-      return res.status(403).send("Access denied, invalid credentials");
-    }
     if (!robotId || !ObjectId.isValid(robotId)) {
       $d.err("Invalid id_robot provided in /locate: ", req.body);
       return res.status(404).send("Robot not found");
     }
 
-    let searchAppId = new ObjectId(appId);
-    const dbApp = await appsCollection.findOne({ _id: searchAppId });
+    let searchRobotId = new ObjectId(robotId as string);
+    const dbRobot = await robotsCollection.findOne({
+      _id: searchRobotId,
+    });
 
-    if (dbApp) {
-      return await bcrypt.compare(
-        appKey,
-        dbApp.key_hash,
-        async (err: any, passRes: any) => {
-          if (passRes) {
-            //pass match => good
+    if (!dbRobot) {
+      $d.err("Robot " + robotId + " not found in /locate");
+      return res.status(404).send("Robot not found");
+    }
 
-            let searchRobotId = new ObjectId(robotId as string);
-            const dbRobot = await robotsCollection.findOne({
-              _id: searchRobotId,
-            });
-
-            if (!dbRobot) {
-              $d.err("Robot " + robotId + " not found in /locate");
-              return res.status(404).send("Robot not found");
-            }
-
-            res.setHeader("Content-Type", "application/json");
-            res.send(
-              JSON.stringify(
-                {
-                  id_robot: robotId,
-                  bridge_server: dbRobot["bridge_server"],
-                },
-                null,
-                4,
-              ),
-            );
-          } else {
-            // invalid app key
-            $d.err("Invalid app credentials provided in /locate: ", req.body);
-            return res.status(403).send("Access denied, invalid credentials");
-          }
+    res.setHeader("Content-Type", "application/json");
+    res.send(
+      JSON.stringify(
+        {
+          id_robot: robotId,
+          bridge_server: dbRobot["bridge_server"],
         },
-      );
-    } else {
-      //robot not found
-      $d.err("Invalid app credentials provided in /locate: ", req.body);
-      return res.status(403).send("Access denied, invalid credentials");
-    }
-  },
-);
-
-registerExpressApp.get(
-  "/app",
-  async function (req: express.Request, res: express.Response) {
-    //return defaults for existing app
-    if (req.query.id !== undefined || req.query.key !== undefined) {
-      return App.GetDefaultConfig(
-        req,
-        res,
-        appsCollection,
-        PUBLIC_BRIDGE_ADDRESS,
-        BRIDGE_SIO_PORT,
-      );
-    }
-
-    // register new app, sets name from ?name=
-    return App.Register(
-      req,
-      res,
-      new ObjectId().toString(), //new key generated here
-      appsCollection,
+        null,
+        4,
+      ),
     );
   },
 );
@@ -865,11 +801,6 @@ sioRobots.on("connect", async function (robotSocket: RobotSocket) {
     "peer:update",
     async function (update_data: any, return_callback: any) {
       if (!robot.isAuthentificated || !robot.isConnected) return;
-
-      let id_app: ObjectId =
-        update_data["id_app"] && ObjectId.isValid(update_data["id_app"])
-          ? new ObjectId(update_data["id_app"])
-          : null;
       let id_instance: ObjectId =
         update_data["id_instance"] &&
         ObjectId.isValid(update_data["id_instance"])
@@ -882,14 +813,12 @@ sioRobots.on("connect", async function (robotSocket: RobotSocket) {
       $d.l(
         "Got peer:update from " +
           robot.idRobot +
-          " for peer " +
-          id_app +
-          "/" +
+          " for peer instance " +
           id_instance +
           ": ",
         update_data,
       );
-      let app = App.FindConnected(id_app, id_instance);
+      let app = App.FindConnected(id_instance);
       if (app && app.getRobotSubscription(robot.idRobot)) {
         app.socket.emit("robot:update", update_data, (app_answer: any) => {
           return_callback(app_answer);
@@ -1042,86 +971,20 @@ sioRobots.on("connect", async function (robotSocket: RobotSocket) {
 
 // App Socket.io
 sioApps.use(async (appSocket: AppSocket, next) => {
-  //err.data = { content: "Please retry later" }; // additional details
-  let idApp = appSocket.handshake.auth.id_app;
-  let appKey = appSocket.handshake.auth.key;
-
-  if (!ObjectId.isValid(idApp)) {
-    $d.err("Invalidid id_app provided: " + idApp);
-    const err = new Error("Access denied");
-    return next(err);
-  }
-
-  // TODO: users will be authenticated here, not apps
-  // if (!appKey) {
-  //     $d.err('Missin key from: '+idApp)
-  //     const err = new Error("Missing auth key");
-  //     return next(err);
-  // }
-
-  let searchId = new ObjectId(idApp);
-  const dbApp = await appsCollection.findOne({ _id: searchId });
-
-  if (dbApp) {
-    let appName = dbApp.name;
-    appSocket.handshake.auth.name = appName;
-    // TODO: users will be authenticated here, not apps
-
-    // bcrypt.compare(appKey, dbApp.key_hash, function(err:any, res:any) {
-    // if (res) { //pass match => good
-    $d.l(
-      (
-        (appName ? appName : "Unnamed App") +
-        " [" +
-        idApp +
-        "] connected from " +
-        appSocket.handshake.address
-      ).green,
-    );
-    appSocket.dbData = dbApp;
-    return next();
-
-    // } else { //invalid key
-    // $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] auth failed for '+appSocket.handshake.address).red);
-    // const err = new Error("Access denied");
-    // return next(err);
-    // }
-    // });
-  } else {
-    //app not found
-    $d.l(
-      (
-        "App id " +
-        idApp +
-        " not found in db for " +
-        appSocket.handshake.address
-      ).red,
-    );
-    const err = new Error("Access denied");
-    return next(err);
-  }
+  $d.l(("Instance connected from " + appSocket.handshake.address).green);
+  return next();
 });
 
 sioApps.on("connect", async function (appSocket: AppSocket) {
   $d.log("Connected w id_instance: ", appSocket.handshake.auth.id_instance);
 
   let app: App = new App(appSocket.handshake.auth.id_instance); //id instance generated in constructor, if not provided
-  app.idApp = new ObjectId(appSocket.handshake.auth.id_app);
-  app.name = appSocket.dbData.name;
   app.socket = appSocket;
   app.isConnected = true;
   app.robotSubscriptions = [];
 
   $d.log(
-    (
-      "Ohi, app " +
-      app.name +
-      " aka " +
-      app.idApp.toString() +
-      " (inst " +
-      app.idInstance.toString() +
-      ") connected to Socket.io"
-    ).cyan,
+    ("Inst " + app.idInstance.toString() + ") connected to Socket.io").cyan,
   );
 
   app.addToConnected();
@@ -1502,14 +1365,8 @@ sioApps.on("connect", async function (appSocket: AppSocket) {
    */
   appSocket.on("disconnect", (msg: any) => {
     $d.l(
-      (
-        "Socket disconnected for app " +
-        app.idApp.toString() +
-        " (inst " +
-        app.idInstance.toString() +
-        "): " +
-        msg
-      ).red,
+      ("Socket disconnected for inst " + app.idInstance.toString() + ": " + msg)
+        .red,
     );
 
     app.isAuthentificated = false;

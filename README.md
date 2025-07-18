@@ -225,10 +225,6 @@ Calling `https://register.phntm.io/robot?json` also registers a new robot, but r
 >
 > > > > > > > fd278da (Configuration, bun as package manager, node version that is not EOL, prettier)
 
-### Registering a new App
-
-Fetching `https://register.phntm.io/app` (GET) registers a new App on this server and returns a JSON with generated app id and a secret key. Phntm Web UI forks and other services using this API are considered individual apps and need to be registered first.
-
 ### Server status
 
 `https://us-ca.bridge.phntm.io:1337/info` (GET, protected with admin password) \

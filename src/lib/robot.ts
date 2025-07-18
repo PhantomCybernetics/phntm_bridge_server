@@ -2,15 +2,7 @@ import { Debugger } from "./debugger";
 const $d: Debugger = Debugger.Get();
 
 import * as SocketIO from "socket.io";
-import {
-  MongoClient,
-  Db,
-  Collection,
-  MongoError,
-  InsertOneResult,
-  ObjectId,
-  FindCursor,
-} from "mongodb";
+import { Collection, InsertOneResult, ObjectId } from "mongodb";
 import { App } from "./app";
 import { ErrOutText } from "./helpers";
 
@@ -22,7 +14,6 @@ import { parseRos2idl } from "@foxglove/rosmsg";
 import { MessageDefinition } from "@foxglove/message-definition";
 
 import axios, { AxiosResponse, AxiosError } from "axios";
-import { resolve4 } from "dns";
 
 export class RobotSocket extends SocketIO.Socket {
   dbData?: any;
