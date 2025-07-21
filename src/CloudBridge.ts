@@ -559,40 +559,6 @@ registerExpressApp.get(
   },
 );
 
-registerExpressApp.use(express.json());
-registerExpressApp.post(
-  "/locate",
-  async function (req: express.Request, res: express.Response) {
-    let robotId: string = req.body["id_robot"];
-    if (!robotId || !ObjectId.isValid(robotId)) {
-      $d.err("Invalid id_robot provided in /locate: ", req.body);
-      return res.status(404).send("Robot not found");
-    }
-
-    let searchRobotId = new ObjectId(robotId as string);
-    const dbRobot = await robotsCollection.findOne({
-      _id: searchRobotId,
-    });
-
-    if (!dbRobot) {
-      $d.err("Robot " + robotId + " not found in /locate");
-      return res.status(404).send("Robot not found");
-    }
-
-    res.setHeader("Content-Type", "application/json");
-    res.send(
-      JSON.stringify(
-        {
-          id_robot: robotId,
-          bridge_server: dbRobot["bridge_server"],
-        },
-        null,
-        4,
-      ),
-    );
-  },
-);
-
 const mongoClient = new MongoClient(DB_URL);
 mongoClient
   .connect()
