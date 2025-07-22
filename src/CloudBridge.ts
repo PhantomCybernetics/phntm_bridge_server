@@ -213,13 +213,13 @@ filesApp.use((req, res, next) => {
 });
 
 filesApp.get(
-  "/:SECRET/:ID_ROBOT/:FILE_URL",
+  "/file-from-robot/:SECRET/:ID_ROBOT/:FILE_URL",
   async function (req: express.Request, res: express.Response) {
     let auth_ok = false;
-    let app: App = null;
+    let app: App;
     for (let i = 0; i < App.connectedApps.length; i++) {
       app = App.connectedApps[i];
-      if (req.params.SECRET == App.connectedApps[i].filesSecret.toString()) {
+      if (req.params.SECRET === App.connectedApps[i].filesSecret.toString()) {
         auth_ok = true;
         break;
       }
@@ -411,14 +411,6 @@ const sioRobots: SocketIO.Server = new SocketIO.Server(bridgeHttpServer, {
   path: "/robot/socket.io/",
   maxHttpBufferSize: 1e7, //allow 10MB for big file uploads
 });
-
-// const sioHumans:SocketIO.Server = new SocketIO.Server(
-//     sioHttpServer, {
-//         pingInterval: 10000,
-//         pingTimeout: 60*1000,
-//         path: "/human/socket.io/"
-//     }
-// );
 
 const sioApps: SocketIO.Server = new SocketIO.Server(bridgeHttpServer, {
   pingInterval: 10000,
@@ -1384,7 +1376,6 @@ function _Clear() {
   $d.log("Server exiting, cleaning up...");
 
   sioRobots.close();
-  // sioHumans.close();
   sioApps.close();
 }
 
