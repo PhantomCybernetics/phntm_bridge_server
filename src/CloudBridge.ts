@@ -12,15 +12,15 @@ import { MongoClient, Db, Collection, ObjectId } from "mongodb";
 import * as SocketIO from "socket.io";
 import express from "express";
 
-import { App, AppSocket } from "./lib/app";
-import { Robot, RobotSocket } from "./lib/robot";
-import { Debugger } from "./lib/debugger";
+import { App, AppSocket } from "./App";
+import { Robot, RobotSocket } from "./Robot";
+import { Debugger } from "../lib/debugger";
 import {
   GetCerts,
   UncaughtExceptionHandler,
   GetCachedFileName,
   SendEmail,
-} from "./lib/helpers";
+} from "../lib/helpers";
 
 const $d: Debugger = Debugger.Get("Bridge Server");
 
@@ -182,12 +182,6 @@ let humansCollection: Collection = null;
 let robotsCollection: Collection = null;
 let robotLogsCollection: Collection = null;
 let appsCollection: Collection = null;
-
-const registerExpressApp = express();
-const registerHttpServer = https.createServer(
-  REGISTER_HTTPS_SERVER_OPTIONS,
-  registerExpressApp,
-);
 
 const bridgeExpressApp = express();
 const bridgeHttpServer = https.createServer(
@@ -521,35 +515,6 @@ bridgeExpressApp.get("/info", function (req: any, res: any) {
 
   res.send(JSON.stringify(info_data, null, 4));
 });
-
-registerExpressApp.get(
-  "/robot",
-  async function (req: express.Request, res: express.Response) {
-    if (req.query.id !== undefined || req.query.key !== undefined) {
-      let robotUIAddress = (UI_ADDRESS_PREFIX + req.query.id) as string;
-      return await Robot.GetDefaultConfig(
-        req,
-        res,
-        robotsCollection,
-        PUBLIC_BRIDGE_ADDRESS,
-        BRIDGE_SIO_PORT,
-        robotUIAddress,
-        DEFAULT_MAINTAINER_EMAIL,
-      );
-    }
-
-    return await Robot.Register(
-      req,
-      res,
-      new ObjectId().toString(), //new key generated here
-      robotsCollection,
-      PUBLIC_BRIDGE_ADDRESS,
-      ICE_SYNC_SERVERS,
-      ICE_SYNC_PORT,
-      ICE_SYNC_SECRET,
-    );
-  },
-);
 
 const mongoClient = new MongoClient(DB_URL);
 mongoClient

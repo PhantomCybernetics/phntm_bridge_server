@@ -6,8 +6,8 @@ import fs from "fs-extra";
 import { Collection, ObjectId } from "mongodb";
 import multer from "multer";
 
-import { GetCachedFileName } from "./lib/helpers";
-import { Debugger } from "./lib/debugger";
+import { GetCachedFileName } from "../lib/helpers";
+import { Debugger } from "../lib/debugger";
 
 interface UploadedFile {
   fieldname: string;
@@ -26,7 +26,7 @@ interface CheckAuthDeps {
 }
 
 interface FileReceiverDeps extends CheckAuthDeps {
-  FILES_CACHE_DIR: string;
+  filesCacheDir: string;
 }
 
 async function checkAuth(
@@ -69,7 +69,7 @@ async function checkAuth(
 const uploadRoute =
   (deps: FileReceiverDeps): RequestHandler =>
   async (req, res) => {
-    const { $d, FILES_CACHE_DIR } = deps;
+    const { $d, filesCacheDir: FILES_CACHE_DIR } = deps;
     try {
       const file = (req as any).file as UploadedFile;
       let json = JSON.parse(req.body.json);
@@ -115,7 +115,7 @@ const uploadRoute =
 const completeRoute =
   (deps: FileReceiverDeps): RequestHandler =>
   async (req, res) => {
-    const { $d, FILES_CACHE_DIR } = deps;
+    const { $d, filesCacheDir: FILES_CACHE_DIR } = deps;
     try {
       const { idRobot, authKey, fileUrl, totalParts } = req.body as any;
       const fileName = GetCachedFileName(fileUrl);
@@ -164,7 +164,7 @@ const completeRoute =
 const clearCacheRoute =
   (deps: FileReceiverDeps): RequestHandler =>
   async (req, res) => {
-    const { $d, FILES_CACHE_DIR } = deps;
+    const { $d, filesCacheDir: FILES_CACHE_DIR } = deps;
     try {
       const { idRobot, authKey } = req.body;
       const clearPath = path.join(FILES_CACHE_DIR + "/" + idRobot);
@@ -188,14 +188,18 @@ const clearCacheRoute =
 
 export function setupFileReceiver(
   deps: FileReceiverDeps & {
-    INCOMING_TMP_DIR: string;
+    incomingFilesTmpDir: string;
   },
   app: Express,
 ) {
-  const { $d, INCOMING_TMP_DIR, FILES_CACHE_DIR } = deps;
+  const {
+    $d,
+    incomingFilesTmpDir: INCOMING_TMP_DIR,
+    filesCacheDir: filesCacheDir,
+  } = deps;
 
-  if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
-    $d.e("Files cache dir not found: " + FILES_CACHE_DIR);
+  if (filesCacheDir && !fs.existsSync(filesCacheDir)) {
+    $d.e("Files cache dir not found: " + filesCacheDir);
     process.exit();
   }
 

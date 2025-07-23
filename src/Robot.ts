@@ -1,19 +1,20 @@
-import { Debugger } from "./debugger";
+import { randomBytes, createHash } from "node:crypto";
+
+import { Debugger } from "../lib/debugger";
 const $d: Debugger = Debugger.Get();
 
 import * as SocketIO from "socket.io";
 import { Collection, InsertOneResult, ObjectId } from "mongodb";
-import { App } from "./app";
-import { ErrOutText } from "./helpers";
+import { App } from "./App";
 
-const bcrypt = require("bcrypt-nodejs");
-import * as express from "express";
-const fs = require("fs");
+import bcrypt from "bcrypt-nodejs";
 
 import { parseRos2idl } from "@foxglove/rosmsg";
 import { MessageDefinition } from "@foxglove/message-definition";
 
 import axios, { AxiosResponse, AxiosError } from "axios";
+import { BridgeServerConfig } from "./config";
+import { bs62 } from "../lib/helpers";
 
 export class RobotSocket extends SocketIO.Socket {
   dbData?: any;
@@ -400,251 +401,92 @@ export class Robot {
     syncSecret: string,
     cb?: any,
   ) {
-    iceServers.forEach(async (syncHost) => {
-      let syncUrl = "https://" + syncHost + ":" + syncPort;
-      $d.log(
-        (" >> Syncing ICE credentials of " + idRobot + " with " + syncUrl).cyan,
-      );
+    await Promise.all(
+      iceServers.map(async (syncHost) => {
+        let syncUrl = "https://" + syncHost + ":" + syncPort;
+        $d.log(
+          (" >> Syncing ICE credentials of " + idRobot + " with " + syncUrl)
+            .cyan,
+        );
 
-      await axios
-        .post(
-          syncUrl,
-          {
-            auth: syncSecret,
-            ice_id: idRobot,
-            ice_secret: iceSecret,
-          },
-          { timeout: 5000 },
-        )
-        .then((response: AxiosResponse) => {
-          if (response.status == 200) {
-            $d.log("Sync OK for " + idRobot);
-          } else {
-            $d.err("Sync returned code " + response.status + " for " + idRobot);
-          }
-          if (cb) cb();
-          return;
-        })
-        .catch((error: AxiosError) => {
-          if (error.code === "ECONNABORTED") {
-            $d.err(
-              "Request timed out for " + syncUrl + " (syncing " + idRobot + ")",
-            );
-          } else {
-            $d.err(
-              "Error from " + syncUrl + " (syncing " + idRobot + "):",
-              error.message,
-            );
-          }
-          if (cb) cb();
-          return;
-        });
-    });
-  }
-
-  static async Register(
-    req: express.Request,
-    res: express.Response,
-    setPassword: string,
-    robotsCollection: Collection,
-    publicBridgeAddress: string,
-    iceSyncServers: string[],
-    iceSyncPort: number,
-    iceSyncSecret: string,
-  ) {
-    let remote_ip: string = (req.headers["x-forwarded-for"] ||
-      req.socket.remoteAddress) as string;
-    const saltRounds = 10;
-
-    bcrypt.genSalt(saltRounds, async function (err: any, salt: string) {
-      if (err) {
-        $d.err("Error while generating salt");
-        return ErrOutText("Error while registering", res);
-      }
-
-      bcrypt.hash(
-        setPassword,
-        salt,
-        null,
-        async function (err: any, hash: string) {
-          if (err) {
-            $d.err("Error while hashing password");
-            return ErrOutText("Error while registering", res);
-          }
-
-          let dateRegistered = new Date();
-
-          let ice_secret = new ObjectId().toString();
-          let robotReg: InsertOneResult = await robotsCollection.insertOne({
-            registered: dateRegistered,
-            bridge_server: publicBridgeAddress,
-            reg_ip: remote_ip,
-            key_hash: hash,
-            ice_secret: ice_secret,
-          });
-
-          $d.l(
-            (
-              "Registered new robot id " +
-              robotReg.insertedId.toString() +
-              " from " +
-              remote_ip
-            ).yellow,
-          );
-
-          Robot.SyncICECredentials(
-            robotReg.insertedId.toString(),
-            ice_secret,
-            iceSyncServers,
-            iceSyncPort,
-            iceSyncSecret,
-          );
-
-          if (req.query.yaml !== undefined) {
-            return res.redirect(
-              "/robot?yaml&id=" +
-                robotReg.insertedId.toString() +
-                "&key=" +
-                setPassword,
-            );
-          } else {
-            return res.redirect(
-              "/robot?id=" +
-                robotReg.insertedId.toString() +
-                "&key=" +
-                setPassword,
-            );
-          }
-        },
-      );
-    });
-  }
-
-  static async GetDefaultConfig(
-    req: express.Request,
-    res: express.Response,
-    robotsCollection: Collection,
-    publicAddress: string,
-    sioPort: number,
-    robotUIAddress: string,
-    defaultMaintainerEmail: string,
-  ) {
-    if (
-      !req.query.id ||
-      !ObjectId.isValid(req.query.id as string) ||
-      !req.query.key
-    ) {
-      $d.err("Invalid id_robot provided in GetDefaultConfig: " + req.query.id);
-      return res.status(403).send("Access denied, invalid credentials");
-    }
-
-    let searchId = new ObjectId(req.query.id as string);
-    const dbRobot = await robotsCollection.findOne({ _id: searchId });
-
-    if (dbRobot) {
-      bcrypt.compare(
-        req.query.key,
-        dbRobot.key_hash,
-        function (err: any, passRes: any) {
-          if (passRes) {
-            //pass match => good
-
-            if (req.query.yaml !== undefined) {
-              const dir: string = __dirname + "/../../";
-              let cfg: string = fs
-                .readFileSync(dir + "robot_config.templ.yaml")
-                .toString();
-
-              cfg = cfg.replace("%HOST%", publicAddress);
-              cfg = cfg.replace(
-                "%REG_DATE_TIME%",
-                dbRobot.registered.toISOString(),
-              );
-              cfg = cfg.replace("%REG_IP%", dbRobot.reg_ip);
-              cfg = cfg.replace("%ROBOT_UI_ADDRESS%", robotUIAddress);
-
-              cfg = cfg.replace("%ROBOT_ID%", dbRobot._id.toString());
-              cfg = cfg.replace("%ROBOT_KEY%", req.query.key as string);
-              cfg = cfg.replace("%MAINTAINER_EMAIL%", defaultMaintainerEmail);
-
-              cfg = cfg.replace(
-                "%bridge_server_address%",
-                dbRobot.bridge_server,
-              );
-              cfg = cfg.replace("%SIO_PATH%", "/robot/socket.io");
-              cfg = cfg.replace("%SIO_PORT%", sioPort.toString());
-
-              res.setHeader("Content-Type", "application/text");
-              res.setHeader(
-                "Content-Disposition",
-                'attachment; filename="phntm_bridge.yaml"',
-              );
-
-              return res.send(cfg);
+        await axios
+          .post(
+            syncUrl,
+            {
+              auth: syncSecret,
+              ice_id: idRobot,
+              ice_secret: iceSecret,
+            },
+            { timeout: 5000 },
+          )
+          .then((response: AxiosResponse) => {
+            if (response.status == 200) {
+              $d.log("Sync OK for " + idRobot);
             } else {
-              // json - this is not very useful yet
-              // $d.l(dbRobot);
-              res.setHeader("Content-Type", "application/json");
-              return res.send(
-                JSON.stringify(
-                  {
-                    id_robot: dbRobot._id.toString(),
-                    key: req.query.key,
-                    bridge_server_address: dbRobot.bridge_server,
-                    sio_path: "/robot/socket.io",
-                    sio_port: sioPort,
-                  },
-                  null,
-                  4,
-                ),
+              $d.err(
+                "Sync returned code " + response.status + " for " + idRobot,
               );
             }
-          } else {
-            //invalid key
-            res.status(403);
-            $d.err("Robot not found in GetDefaultConfig: " + req.query.id);
-            return res.send("Access denied, invalid credentials");
-          }
-        },
-      );
-    } else {
-      //robot not found
-      return res.status(403).send("Access denied, invalid credentials");
-    }
+            if (cb) cb();
+            return;
+          })
+          .catch((error: AxiosError) => {
+            if (error.code === "ECONNABORTED") {
+              $d.err(
+                "Request timed out for " +
+                  syncUrl +
+                  " (syncing " +
+                  idRobot +
+                  ")",
+              );
+            } else {
+              $d.err(
+                "Error from " + syncUrl + " (syncing " + idRobot + "):",
+                error.message,
+              );
+            }
+            if (cb) cb();
+            return;
+          });
+      }),
+    );
   }
 
-  static async GetRegisteredBridgeServer(
-    req: express.Request,
-    res: express.Response,
-    robotsCollection: Collection,
-  ) {
-    if (!req.params.id || !ObjectId.isValid(req.params.id as string)) {
-      $d.err(
-        "Invalid id_robot provided in GetRegisteredBridgeServer: " +
-          req.params.id,
-      );
-      return res.status(403).send();
-    }
+  static async Register({
+    $d,
+    robotsCollection,
+    iceServers,
+    iceSyncPort,
+    iceSyncSecret,
+  }: { robotsCollection: Collection; $d: Debugger } & Pick<
+    BridgeServerConfig,
+    "iceServers" | "iceSyncPort" | "iceSyncSecret"
+  >) {
+    const secretBuffer = randomBytes(16);
+    const robotKey = bs62.encode(secretBuffer);
+    const robotKeyHash = bs62.encode(
+      createHash("sha256").update(secretBuffer).digest(),
+    );
 
-    let searchId = new ObjectId(req.params.id as string);
-    const dbRobot = await robotsCollection.findOne({ _id: searchId });
+    let dateRegistered = new Date();
+    let ice_secret = bs62.encode(randomBytes(16));
+    let robotReg: InsertOneResult = await robotsCollection.insertOne({
+      registered: dateRegistered,
+      key_hash: robotKeyHash,
+      ice_secret: ice_secret,
+    });
+    const robotId = robotReg.insertedId.toString();
+    $d.l(`Registered new robot ${robotId}`.yellow);
 
-    if (dbRobot) {
-      res.setHeader("Content-Type", "application/json");
-      return res.send(
-        JSON.stringify(
-          {
-            id_robot: dbRobot._id.toString(),
-            bridge_server: dbRobot.bridge_server,
-          },
-          null,
-          4,
-        ),
-      );
-    } else {
-      $d.err("Robot not found in GetRegisteredBridgeServer: " + req.params.id);
-      return res.status(403).send();
-    }
+    await Robot.SyncICECredentials(
+      robotReg.insertedId.toString(),
+      ice_secret,
+      iceServersToSyncServerHosts(iceServers),
+      iceSyncPort,
+      iceSyncSecret,
+    );
+
+    return { robotId, robotKey };
   }
 
   public static FindConnected(idSearch: ObjectId): Robot | null {
@@ -655,4 +497,20 @@ export class Robot {
     }
     return null;
   }
+}
+
+function iceServersToSyncServerHosts(iceServers: string[]) {
+  const hosts = new Set<string>();
+  iceServers.forEach((one_server: string) => {
+    let serverParts = one_server.split(":");
+    if (serverParts.length != 3) {
+      $d.err(
+        "Server misconfigured in config: " + one_server + "; ignoring in sync",
+      );
+      return;
+    }
+    hosts.add(serverParts[1]);
+  });
+
+  return Array.from(hosts);
 }

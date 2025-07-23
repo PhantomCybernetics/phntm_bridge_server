@@ -13,11 +13,11 @@ cleanup() {
 # Set up signal handlers
 trap cleanup TERM INT
 
-echo -e "\033[32m[launching Bridge Server Synchronizer...]\033[0m"
+echo -e "\033[32m[launching Bridge Server...]\033[0m"
 clear
 
 # Start the Node.js process
-./node_modules/.bin/tsx ./src/CloudBridge.js "$@"
+./node_modules/.bin/tsx ./exe/Main.js "$@"
 PID=$!
 
 # Wait for the process to complete

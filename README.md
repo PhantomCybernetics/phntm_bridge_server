@@ -14,16 +14,6 @@ In order to provide a secure STUN/TURN service, the Bridge Server also synchroni
 
 ![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Cloud_Bridge.png)
 
-<<<<<<< HEAD
-
-## Install Bridge Server
-
-||||||| parent of fd278da (Configuration, bun as package manager, node version that is not EOL, prettier)
-
-## Install Cloud Bridge
-
-=======
-
 ## Install Bridge Server
 
 ### Install Node.js & Bun
@@ -32,8 +22,6 @@ In order to provide a secure STUN/TURN service, the Bridge Server also synchroni
 connection to be immediately closed.
 
 Last tested with node.js v24.3. With [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating):
-
-> > > > > > > fd278da (Configuration, bun as package manager, node version that is not EOL, prettier)
 
 ```bash
 nvm install 24
@@ -66,79 +54,13 @@ cd phntm_bridge_server
 npm install
 ```
 
-### Create a config file
+### Create a config file or setup environment variables
 
-<<<<<<< HEAD
-Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
-||||||| parent of fd278da (Configuration, bun as package manager, node version that is not EOL, prettier)
-Create a new config file e.g. `~/cloud_bridge/config.jsonc` and paste:
-=======
+See [configuration file example](./config.example.jsonc). All configuration
+fields can be also provided from environment variables. Environment variables take precedence over configuration file.
 
-Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
-
-> > > > > > > fd278da (Configuration, bun as package manager, node version that is not EOL, prettier)
-
-```jsonc
-{
-  "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
-  "dieOnException": true,
-
-  "BRIDGE": {
-    "registerAddress": "https://register.phntm.io", // this is geo balanced
-    "registerPort": 443,
-    "registerSsl": {
-      "private": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
-      "public": "/etc/letsencrypt/live/register.phntm.io/fullchain.pem",
-    },
-    "bridgeAddress": "https://us-ca.bridge.phntm.io", // this is not
-    "bridgePort": 1337,
-    "bridgeSsl": {
-      "private": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/privkey.pem",
-      "public": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/fullchain.pem",
-    },
-    "admin": {
-      "username": "admin",
-      "password": "*******",
-    },
-    "uiAddressPrefix": "https://bridge.phntm.io/", // this is shared by several bridge instances and geo loadbalanced
-
-    "sesAWSRegion": "us-west-1", // emails via SES
-    "emailSender": "Phantom Bridge <no-reply@phntm.io>",
-
-    "verboseDefs": false,
-    "verboseServices": false,
-    "verboseTopics": false,
-    "verboseNodes": false,
-    "verboseDocker": false,
-    "verboseWebRTC": false,
-
-    "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
-
-    "defaultMaintainerEmail": "robot.master@example.com",
-
-    "filesPort": 1338, // file extractor port
-    "filesCacheDir": "/home/ubuntu/file_fw_cache", // client files will be cached here
-
-    "iceServers": [
-      // stun/turn servers to push to robots and sync ice credentials with
-      "turn:ca.turn.phntm.io:3478",
-      "turn:ca.turn.phntm.io:3479",
-    ],
-  },
-
-  "FILE_RECEIVER": {
-    "uploadPort": 1336,
-    "incomingFilesTmpDir": "/home/ubuntu/file_fw_cache/tmp/",
-  },
-
-  "ICE_SYNC": {
-    "port": 1234, // stun/turn credential will be pushed to configured ice servers and this port
-    "secret": "SYNC_PASS", // secret matching credentials receiver config on each stun/turn server
-  },
-}
-```
-
-Note that in this cofiguration, ports 1336, 1337 and 1338 must be open to inboud TCP traffic!
+It is also possible to use `bridgeServerConfigFile` environment variable with
+location to configuration file.
 
 ### Add system services to your systemd
 

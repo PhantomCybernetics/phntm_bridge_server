@@ -5,8 +5,8 @@ import fs from "node:fs";
 
 C; //force import typings with string prototype extension
 
-import { Debugger } from "./lib/debugger";
-import { Robot } from "./lib/robot";
+import { Debugger } from "../lib/debugger";
+import { Robot } from "../Robot";
 const $d: Debugger = Debugger.Get("TURN Sync");
 
 let configFname = process.env.CONFIG_FILE ?? `${__dirname}/../config.jsonc`;

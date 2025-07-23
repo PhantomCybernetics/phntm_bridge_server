@@ -2,14 +2,7 @@
   "name": "phntm_bridge_server",
   "version": "0.0.1",
   "description": "Signalling server for Phantom Bridge",
-  "packageManager": "bun@1.2.10",
-  "scripts": {
-    "build": "tsc --pretty --allowUnreachableCode -p ./tsconfig/bridge.json",
-    "start-file-receiver": "bun src/fileReceiver.ts",
-    "start-bridge": "node ./build/CloudBridge.js",
-    "dev-bridge": "tsx --watch ./src/CloudBridge.js",
-    "dev-file-receiver": "bun --watch src/fileReceiver.ts"
-  },
+  "packageManager": "bun@1.2.19",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/PhantomCybernetics/phntm_bridge_server.git"
@@ -40,6 +33,7 @@
     "@foxglove/message-definition": "^0.3.0",
     "@foxglove/rosmsg": "^4.2.2",
     "axios": "^1.7.9",
+    "base-x": "^5.0.1",
     "bcrypt-nodejs": "^0.0.3",
     "browserify": "^17.0.0",
     "colors": "^1.4.0",
@@ -57,7 +51,8 @@
     "socket.io-client": "^4.7.1",
     "three": "^0.157.0",
     "tsx": "^4.20.3",
-    "xml-formatter": "^3.4.1"
+    "xml-formatter": "^3.4.1",
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@types/bcrypt-nodejs": "^0.0.31",

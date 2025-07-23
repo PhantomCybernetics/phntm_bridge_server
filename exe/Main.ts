@@ -6,7 +6,7 @@ import * as jsonc from "comment-json";
 import C from "colors";
 C; //force import typings with string prototype extension
 
-import { GetCerts } from "./lib/helpers";
+import { GetCerts } from "../lib/helpers";
 import { Collection, MongoClient } from "mongodb";
 
 const UPLOAD_PORT: number = CONFIG["FILE_RECEIVER"].uploadPort;

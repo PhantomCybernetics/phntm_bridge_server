@@ -1,0 +1,59 @@
+{
+  "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
+  "dieOnException": true,
+
+  "BRIDGE": {
+    "registerAddress": "https://register.phntm.io", // this is geo balanced
+    "registerPort": 443,
+    "registerSsl": {},
+    "bridgeAddress": "https://us-ca.bridge.phntm.io", // this is not
+    "bridgePort": 1337,
+    "bridgeSsl": {
+      "private": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/privkey.pem",
+      "public": "/etc/letsencrypt/live/us-ca.bridge.phntm.io/fullchain.pem",
+    },
+    "admin": {
+      "username": "admin",
+      "password": "*******",
+    },
+    "uiAddressPrefix": "https://bridge.phntm.io/", // this is shared by several bridge instances and geo loadbalanced
+
+    "sesAWSRegion": "us-west-1", // emails via SES
+    "emailSender": "Phantom Bridge <no-reply@phntm.io>",
+
+    "verboseDefs": false,
+    "verboseServices": false,
+    "verboseTopics": false,
+    "verboseNodes": false,
+    "verboseDocker": false,
+    "verboseWebRTC": false,
+
+    "defaultMaintainerEmail": "robot.master@example.com",
+
+    "filesPort": 1338, // file extractor port
+  },
+
+  "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
+
+  "https": true,
+  "sslPrivate": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
+  "sslCert": "/etc/letsencrypt/live/register.phntm.io/fullchain.pem",
+
+  // If providing by environment variable, separate servers by comma.
+  // servers from environment variable and configuration file will be merged.
+  "iceServers": [
+    // stun/turn servers to push to robots and sync ice credentials with
+    "turn:ca.turn.phntm.io:3478",
+    "turn:ca.turn.phntm.io:3479",
+  ],
+
+  // client files will be cached here
+  "filesCacheDir": "/home/ubuntu/file_fw_cache",
+
+  // directory for temporary upload files
+  "incomingFilesTmpDir": "/home/ubuntu/file_fw_cache/tmp/",
+
+  // stun/turn credential will be pushed to configured ice servers on this port
+  "iceSyncPort": 1234,
+  "iceSyncSecret": "SYNC_PASS", // secret matching credentials receiver config on each stun/turn server
+}
