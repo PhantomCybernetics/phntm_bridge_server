@@ -200,7 +200,7 @@ filesApp.use((req, res, next) => {
 });
 
 filesApp.get(
-  "/file-from-robot/:SECRET/:ID_ROBOT/:FILE_URL",
+  "/:ID_ROBOT/file-from-robot/:SECRET/:FILE_URL",
   async function (req: express.Request, res: express.Response) {
     let auth_ok = false;
     let app: App;
