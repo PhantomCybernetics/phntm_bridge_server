@@ -27,6 +27,10 @@ function httpsOptions() {
   };
 }
 
+process.on("uncaughtException", function (err) {
+  $d.e("Caught unhandled exception: ", err);
+});
+
 const mongoClient = new MongoClient(config.dbUrl);
 mongoClient.connect().then((client) => {
   $d.log(
@@ -46,6 +50,8 @@ mongoClient.connect().then((client) => {
   const httpServer = config.https
     ? https.createServer(httpsOptions(), app)
     : http.createServer(app);
+
+  setupSockets(httpServer);
 
   httpServer.listen(config.port);
   console.log(

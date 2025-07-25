@@ -10,7 +10,7 @@ export class App {
   name: string;
   isConnected: boolean;
   isAuthentificated: boolean;
-  socket: AppSocket;
+  socket: AppSocket | null;
   servedMsgDefs: string[] = [];
   robotSubscriptions: {
     id_robot: ObjectId;
@@ -75,21 +75,21 @@ export class App {
 
   public addToRobotSubscriptions(
     idRobot: ObjectId,
-    read?: string[],
+    read?: string[] | null,
     write?: string[][],
   ) {
     for (let i = 0; i < this.robotSubscriptions.length; i++) {
       if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
         if (read) {
           read.forEach((id_src) => {
-            if (this.robotSubscriptions[i].read.indexOf(id_src) === -1)
-              this.robotSubscriptions[i].read.push(id_src);
+            if (this.robotSubscriptions[i].read?.indexOf(id_src) === -1)
+              this.robotSubscriptions[i].read?.push(id_src);
           });
         }
         if (write) {
           write.forEach((id_src) => {
-            if (this.robotSubscriptions[i].write.indexOf(id_src) === -1)
-              this.robotSubscriptions[i].write.push(id_src);
+            if (this.robotSubscriptions[i].write?.indexOf(id_src) === -1)
+              this.robotSubscriptions[i].write?.push(id_src);
           });
         }
         return;
@@ -106,15 +106,22 @@ export class App {
       if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
         if (read) {
           read.forEach((id_src) => {
-            let p = this.robotSubscriptions[i].read.indexOf(id_src);
-            if (p !== -1) this.robotSubscriptions[i].read.splice(p, 1);
+            let p = this.robotSubscriptions[i].read?.indexOf(id_src);
+            if (p !== undefined && p !== -1) {
+              this.robotSubscriptions[i].read?.splice(p, 1);
+            }
           });
         }
         if (write) {
           write.forEach((id_src) => {
-            for (let i = 0; i < this.robotSubscriptions[i].write.length; i++) {
-              if (this.robotSubscriptions[i].write[i][0] == id_src) {
-                this.robotSubscriptions[i].write.splice(i, 1);
+            for (
+              let i = 0;
+              i < (this.robotSubscriptions[i].write?.length ?? -1);
+              i++
+            ) {
+              const write = this.robotSubscriptions[i].write;
+              if (write && write[i][0] == id_src) {
+                write.splice(i, 1);
                 i--;
               }
             }

@@ -7,8 +7,6 @@ import * as SocketIO from "socket.io";
 import { Collection, InsertOneResult, ObjectId } from "mongodb";
 import { App } from "./App";
 
-import bcrypt from "bcrypt-nodejs";
-
 import { parseRos2idl } from "@foxglove/rosmsg";
 import { MessageDefinition } from "@foxglove/message-definition";
 
@@ -31,7 +29,7 @@ export class Robot {
   type: ObjectId;
   isConnected: boolean;
   isAuthentificated: boolean;
-  socket: RobotSocket;
+  socket: RobotSocket | null;
   timeConnected: Date;
 
   idls: any = {}; // message defs in .idl fomrat extracted from the robot
@@ -86,7 +84,7 @@ export class Robot {
     };
     let that = this;
     $d.log("Calling robot:peer with data", data);
-    this.socket.emit("peer", data, (answerData: any) => {
+    this.socket?.emit("peer", data, (answerData: any) => {
       if (!app.socket) return;
 
       $d.log("Got robot's answer:", answerData);
@@ -141,7 +139,7 @@ export class Robot {
         App.connectedApps.forEach((app) => {
           if (!app.getRobotSubscription(this.idRobot)) return;
 
-          app.socket.emit("robot", that.getStateData()); // = robot offline
+          app.socket?.emit("robot", that.getStateData()); // = robot offline
           app.servedMsgDefs = []; // reset
         });
       }
@@ -191,7 +189,7 @@ export class Robot {
       if (verbose) $d.l(msg_type + " -> " + defs.length + " defs:");
       for (let k = 0; k < defs.length; k++) {
         let def = defs[k];
-        if (this.msg_defs[def.name]) continue; // only once per robot session
+        if (!def.name || this.msg_defs[def.name]) continue; // only once per robot session
         if (verbose) $d.l(def);
         this.msg_defs[def.name] = def;
         numProcessed++;
@@ -222,7 +220,7 @@ export class Robot {
             app.idInstance.toString(),
           missing_app_defs,
         );
-      app.socket.emit("defs", robotDefsData);
+      app.socket?.emit("defs", robotDefsData);
     }
   }
 
@@ -237,7 +235,7 @@ export class Robot {
     let robotNodesData = this.labelSubsciberData(this.nodes);
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
-        app.socket.emit("nodes", robotNodesData);
+        app.socket?.emit("nodes", robotNodesData);
       }
     });
   }
@@ -246,7 +244,7 @@ export class Robot {
     let robotTopicsData = this.labelSubsciberData(this.topics);
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
-        app.socket.emit("topics", robotTopicsData);
+        app.socket?.emit("topics", robotTopicsData);
       }
     });
   }
@@ -256,7 +254,7 @@ export class Robot {
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
         // $d.l('emitting services to app', robotServicesData);
-        app.socket.emit("services", robotServicesData);
+        app.socket?.emit("services", robotServicesData);
       }
     });
   }
@@ -266,7 +264,7 @@ export class Robot {
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
         // $d.l('emitting cameras to app', robotCamerasData);
-        app.socket.emit("cameras", robotCamerasData);
+        app.socket?.emit("cameras", robotCamerasData);
       }
     });
   }
@@ -275,7 +273,7 @@ export class Robot {
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
         // $d.l('emitting discovery state to app', discoveryOn);
-        app.socket.emit("introspection", this.introspection);
+        app.socket?.emit("introspection", this.introspection);
       }
     });
   }
@@ -287,7 +285,7 @@ export class Robot {
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
         // $d.l('emitting docker to app', robotDockerContainersData);
-        app.socket.emit("docker", robotDockerContainersData);
+        app.socket?.emit("docker", robotDockerContainersData);
       }
     });
   }
@@ -305,7 +303,7 @@ export class Robot {
     let robotPeerData = this.labelSubsciberData(peerData);
     App.connectedApps.forEach((app) => {
       if (app.getRobotSubscription(this.idRobot)) {
-        app.socket.emit("robot_peers", robotPeerData);
+        app.socket?.emit("robot_peers", robotPeerData);
       }
     });
   }
@@ -323,7 +321,7 @@ export class Robot {
         msg: msg,
       });
       if (app.getRobotSubscription(this.idRobot)) {
-        app.socket.emit("peer_service_call", data);
+        app.socket?.emit("peer_service_call", data);
       }
     });
   }
@@ -345,7 +343,7 @@ export class Robot {
           git_sha: this.git_sha,
           git_tag: this.git_tag,
           last_connected: this.timeConnected,
-          last_ip: this.socket.handshake.address,
+          last_ip: this.socket?.handshake.address,
         },
         $inc: { total_sessions: 1 },
       },
@@ -355,7 +353,7 @@ export class Robot {
       id: this.idRobot,
       stamp: this.timeConnected,
       event: Robot.LOG_EVENT_CONNECT,
-      ip: this.socket.handshake.address,
+      ip: this.socket?.handshake.address,
     });
   }
 
@@ -385,7 +383,7 @@ export class Robot {
         stamp: new Date(),
         event: ev,
         session_length_min: session_length_min,
-        ip: this.socket.handshake.address,
+        ip: this.socket?.handshake.address,
       })
       .finally(() => {
         numTasks--;
