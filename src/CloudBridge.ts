@@ -61,10 +61,6 @@ const regCertFiles: string[] = GetCerts(
   REGISTER_SSL_CERT_PRIVATE,
   REGISTER_SSL_CERT_PUBLIC,
 );
-const REGISTER_HTTPS_SERVER_OPTIONS = {
-  key: fs.readFileSync(regCertFiles[0]),
-  cert: fs.readFileSync(regCertFiles[1]),
-};
 const bridgeCertFiles: string[] = GetCerts(
   BRIDGE_SSL_CERT_PRIVATE,
   BRIDGE_SSL_CERT_PUBLIC,
@@ -93,8 +89,6 @@ if (ICE_SERVERS) {
     }
   });
 }
-const ICE_SYNC_PORT: number = CONFIG["ICE_SYNC"].port;
-const ICE_SYNC_SECRET: string = CONFIG["ICE_SYNC"].secret;
 
 const SES_AWS_REGION: string = CONFIG["BRIDGE"].sesAWSRegion;
 const sesClient = SES_AWS_REGION
@@ -171,7 +165,6 @@ console.log("Using ICE servers: ".green, ICE_SERVERS);
 console.log(
   ("Total unique ICE servers to sync with: " + ICE_SYNC_SERVERS.length).green,
 );
-console.log(("ICE sync port: " + ICE_SYNC_PORT).green);
 console.log(
   "----------------------------------------------------------------------"
     .yellow,
