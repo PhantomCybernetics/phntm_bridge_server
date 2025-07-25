@@ -35,8 +35,10 @@
 
   "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
 
+  "port": 443,
+
   "https": true,
-  "sslPrivate": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
+  "sslPrivateKey": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
   "sslCert": "/etc/letsencrypt/live/register.phntm.io/fullchain.pem",
 
   // If providing by environment variable, separate servers by comma.

@@ -14,21 +14,34 @@ export function ErrOutText(msg: string, res: any) {
   res.send(msg);
 }
 
-export function GetCerts(priv: string, pub: string): string[] {
-  let certFiles: string[] = [priv, pub];
-  const fs = require("fs");
-  for (var i = 0; i < 2; i++) {
-    if (!fs.existsSync(certFiles[i])) {
+export function validateSslCertificateFiles({
+  $d,
+  sslPrivateKey,
+  sslCert,
+}: {
+  $d: Debugger;
+  sslPrivateKey?: string;
+  sslCert?: string;
+}): { sslPrivateKey: string; sslCert: string } {
+  if (!sslPrivateKey || !sslCert) {
+    $d.log("https is enabled, but sslPrivateKey or sslCert not configured".red);
+    process.exit(1);
+  }
+
+  let valid = true;
+  for (const file of [sslPrivateKey, sslCert]) {
+    if (!fs.existsSync(file)) {
       $d.log(
-        (
-          certFiles[i] +
-          " not found. Run `sh ./ssl/gen.sh` to generate a self signed SSL certificate"
-        ).red,
+        `${file} not found. Run "sh ./ssl/gen.sh" to generate a self signed SSL certificate`
+          .red,
       );
-      break;
+      valid = false;
     }
   }
-  return certFiles;
+  if (!valid) {
+    process.exit(1);
+  }
+  return { sslPrivateKey, sslCert };
 }
 
 export function UncaughtExceptionHandler(

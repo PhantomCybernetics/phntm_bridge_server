@@ -1,50 +1,55 @@
 import https from "node:https";
+import http from "node:http";
 import fs from "node:fs";
 
 import express from "express";
-import * as jsonc from "comment-json";
+import { MongoClient } from "mongodb";
 import C from "colors";
 C; //force import typings with string prototype extension
 
-import { GetCerts } from "../lib/helpers";
-import { Collection, MongoClient } from "mongodb";
+import { validateSslCertificateFiles } from "../lib/helpers";
+import { Debugger } from "../lib/debugger";
+import { getConfig } from "../src/config";
+import { setupFileReceiver } from "../src/FileReceiver";
+import { setupFileRequester } from "../src/FileRequester";
 
-const UPLOAD_PORT: number = CONFIG["FILE_RECEIVER"].uploadPort;
-const DB_URL: string = CONFIG.dbUrl;
-const BRIDGE_SSL_CERT_PRIVATE = CONFIG["BRIDGE"].bridgeSsl.private;
-const BRIDGE_SSL_CERT_PUBLIC = CONFIG["BRIDGE"].bridgeSsl.public;
+const $d: Debugger = Debugger.Get("Bridge Server");
+const config = await getConfig($d);
 
-const bridgeCertFiles: string[] = GetCerts(
-  BRIDGE_SSL_CERT_PRIVATE,
-  BRIDGE_SSL_CERT_PUBLIC,
-);
-const HTTPS_SERVER_OPTIONS = {
-  key: fs.readFileSync(bridgeCertFiles[0]),
-  cert: fs.readFileSync(bridgeCertFiles[1]),
-};
+function httpsOptions() {
+  const { sslPrivateKey, sslCert } = validateSslCertificateFiles({
+    $d,
+    ...config,
+  });
+  return {
+    key: fs.readFileSync(sslPrivateKey),
+    cert: fs.readFileSync(sslCert),
+  };
+}
 
-let configFname = process.env.CONFIG_FILE ?? `${__dirname}/../config.jsonc`;
-const CONFIG: any = jsonc.parse(fs.readFileSync(configFname).toString());
-
-const FILES_CACHE_DIR: string = CONFIG["BRIDGE"].filesCacheDir;
-const INCOMING_TMP_DIR: string = CONFIG["FILE_RECEIVER"].incomingFilesTmpDir;
-
-let db: Db;
-let robotsCollection: Collection;
-
-const app = express();
-const httpServer = https.createServer(HTTPS_SERVER_OPTIONS, app);
-
-const mongoClient = new MongoClient(DB_URL);
+const mongoClient = new MongoClient(config.dbUrl);
 mongoClient.connect().then((client) => {
-  $d.log(("We are connected to " + DB_URL).green);
+  $d.log(
+    `We are connected to ${config.dbUrl}, using db ${config.dbName}`.green,
+  );
 
-  db = client.db("phntm");
+  const db = client.db(config.dbName);
+  const robotsCollection = db.collection("robots");
 
-  robotsCollection = db.collection("robots");
+  const app = express();
+  setupFileReceiver(
+    { $d: Debugger.Get("File Receiver"), ...config, robotsCollection },
+    app,
+  );
+  setupFileRequester({ $d: Debugger.Get("File Requester"), ...config }, app);
 
-  const $d: Debugger = Debugger.Get("Files");
+  const httpServer = config.https
+    ? https.createServer(httpsOptions(), app)
+    : http.createServer(app);
 
-  httpServer.listen(UPLOAD_PORT);
-  console.log(`Upload server running on port ${UPLOAD_PORT}`);
+  httpServer.listen(config.port);
+  console.log(
+    `${config.https ? "HTTPS" : "HTTP"} bridge server listening on port ${config.port}`
+      .green,
+  );
 });

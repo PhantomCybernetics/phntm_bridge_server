@@ -19,6 +19,11 @@ const envConfigSchema = z
     dbName: z.string(),
     dieOnException: booleanString(),
 
+    port: z.coerce.number(),
+    https: booleanString(),
+    sslPrivateKey: z.string(),
+    sslCert: z.string(),
+
     iceServers: z.string(),
     iceSyncPort: z.coerce.number(),
     iceSyncSecret: z.string(),
@@ -33,6 +38,11 @@ const configSchema = z.object({
   dbUrl: z.string(),
   dbName: z.string().default("phntm"),
   dieOnException: z.boolean().default(true),
+
+  port: z.number().int().positive().default(443),
+  https: z.boolean().default(true),
+  sslPrivateKey: z.string().optional(),
+  sslCert: z.string().optional(),
 
   iceServers: z.string().array(),
   iceSyncPort: z.number().int().positive(),

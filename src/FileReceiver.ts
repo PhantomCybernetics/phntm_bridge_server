@@ -192,18 +192,14 @@ export function setupFileReceiver(
   },
   app: Express,
 ) {
-  const {
-    $d,
-    incomingFilesTmpDir: INCOMING_TMP_DIR,
-    filesCacheDir: filesCacheDir,
-  } = deps;
+  const { $d, incomingFilesTmpDir, filesCacheDir } = deps;
 
   if (filesCacheDir && !fs.existsSync(filesCacheDir)) {
     $d.e("Files cache dir not found: " + filesCacheDir);
     process.exit();
   }
 
-  const upload = multer({ dest: INCOMING_TMP_DIR });
+  const upload = multer({ dest: incomingFilesTmpDir });
   app.post("/upload", upload.single("file"), uploadRoute(deps));
   app.post("/complete", express.json(), completeRoute(deps));
   app.post("/clear_cache", express.json(), clearCacheRoute(deps));

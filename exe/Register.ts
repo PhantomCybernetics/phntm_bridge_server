@@ -4,7 +4,7 @@ C; //force import typings with string prototype extension
 
 import { getConfig } from "../src/config";
 import { Debugger } from "../lib/debugger";
-import { Robot } from "../src/robot";
+import { Robot } from "../src/Robot";
 
 const $d: Debugger = Debugger.Get("Register");
 
