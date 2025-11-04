@@ -55,14 +55,18 @@
     encoder_hw_device_default: 'sw' # 'cuda' for Nvidia, 'vaapi' for AMD or 'sw' for CPU
 
     ## Custom topic configs
+    /rosout:
+      reliability: RELIABLE
+      durability: TRANSIENT_LOCAL
+      lifespan_sec: -1.0 # infinity
     /robot_description:
-      reliability: 1 # Reliable
-      durability: 1 # Transient local
-      lifespan_sec: -1.0 # Infinity
+      reliability: RELIABLE
+      durability: TRANSIENT_LOCAL
+      lifespan_sec: -1.0
     /tf_static:
-      reliability: 1 # Reliable
-      durability: 1 # Transient local
-      lifespan_sec: -1.0 # Infinity
+      reliability: RELIABLE
+      durability: TRANSIENT_LOCAL
+      lifespan_sec: -1.0
     # /battery:
     #  min_voltage: 9.0 # set empty voltage
     #  max_voltage: 12.6 # set set full voltage
