@@ -1,7 +1,7 @@
 const startupTime:number = Date.now();
 
 import { Debugger } from './lib/debugger';
-const $d:Debugger = Debugger.Get('Cloud Bridge');
+const $d:Debugger = Debugger.Get('Bridge Server');
 
 import { SESClient } from "@aws-sdk/client-ses";
 
@@ -96,10 +96,10 @@ const EMAIL_SENDER:string = CONFIG['BRIDGE'].emailSender;
 
 $d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
-console.log(' PHNTM CLOUD BRIDGE'.yellow);
+console.log(' PHNTM BRIDGE SERVER'.yellow);
 console.log('');
-console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml      Register new robot (YAML/JSON)').green);
-console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app             Register new App (JSON)').green);
+console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml               Register new robot (YAML/JSON)').green);
+console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app                      Register new App (JSON)').green);
 console.log('');
 console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info                     System info').yellow);
 console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/         Robot API').cyan);
@@ -466,7 +466,9 @@ registerExpressApp.post('/locate', async function(req:express.Request, res:expre
                 res.setHeader('Content-Type', 'application/json');
                 res.send(JSON.stringify({
                     'id_robot': robotId,
-                    'bridge_server': dbRobot['bridge_server']
+                    'bridge_server': dbRobot['bridge_server'],
+                    'ui_custom_css': dbRobot['ui_custom_includes_css'],
+                    'ui_custom_js': dbRobot['ui_custom_includes_js'],
                 }, null, 4));
 
             } else { // invalid app key
@@ -564,16 +566,24 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
     let robot:Robot = new Robot();
     robot.idRobot = robotSocket.dbData._id;
-    robot.name = robotSocket.handshake.auth.name ?
-                    robotSocket.handshake.auth.name :
-                        (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
+    robot.name = robotSocket.handshake.auth.name ? robotSocket.handshake.auth.name : (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
     robot.maintainer_email = robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email;
     
     robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '';
     robot.git_sha = robotSocket.handshake.auth.git_sha ? robotSocket.handshake.auth.git_sha : '';
     robot.git_tag = robotSocket.handshake.auth.git_tag ? robotSocket.handshake.auth.git_tag : '';
 
-    $d.log(('Ohi, robot '+robot.name+' aka '+robot.idRobot.toString()+' ['+robot.ros_distro+'] connected to Socket.io').cyan);
+    $d.log(('Ohi, robot ' + robot.name+' aka ' + robot.idRobot.toString() +' ['+robot.ros_distro+'] connected to Socket.io').cyan);
+
+    robot.ui_peer_limit = robotSocket.handshake.auth.ui_peer_limit ? robotSocket.handshake.auth.ui_peer_limit : 0;
+    $d.log('Robot ' + robot.idRobot.toString() + ' UI peer limit is '+robot.ui_peer_limit);
+
+    robot.ui_custom_includes_js = robotSocket.handshake.auth.ui_custom_includes_js ? robotSocket.handshake.auth.ui_custom_includes_js : [];
+    robot.ui_custom_includes_css = robotSocket.handshake.auth.ui_custom_includes_css ? robotSocket.handshake.auth.ui_custom_includes_css : [];
+    if (robot.ui_custom_includes_js.length)
+        $d.log('Robot ' + robot.idRobot.toString() + ' UI custom JS includes ', robot.ui_custom_includes_js);
+    if (robot.ui_custom_includes_css.length)
+        $d.log('Robot ' + robot.idRobot.toString() + ' UI custom CSS includes ', robot.ui_custom_includes_css);
 
     robot.isAuthentificated = true;
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
@@ -597,7 +607,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     }
 
     robot.isConnected = true;
-    robot.logConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);
+    robot.updateDbLogConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);
 
     robot.topics = [];
     robot.services = [];
@@ -734,8 +744,8 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         $d.l(('Socket disconnect for robot: '+data).red);
         robot.isAuthentificated = false;
         robot.isConnected = false;
-        robot.topics = null;
-        robot.services = null;
+        robot.topics = [];
+        robot.services = [];
         robot.logDisconnect(robotsCollection, robotLogsCollection, disconnectEvent, () => {
             robot.socket = null;
             robot.removeFromConnected(!shuttingDown);
@@ -823,7 +833,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
                 returnCallback({
                     'err': 1,
                     'msg': 'Invalid robot id '+data.id_robot
-                })
+                });
             }
             return false;
         }

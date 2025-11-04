@@ -28,6 +28,9 @@ export class Robot {
     ros_distro: string;
     git_sha: string;
     git_tag: string;
+    ui_peer_limit: number;
+    ui_custom_includes_js: string[];
+    ui_custom_includes_css: string[];
     type: ObjectId;
     isConnected: boolean;
     isAuthentificated: boolean;
@@ -312,7 +315,7 @@ export class Robot {
         });
     }
 
-    public logConnect(robotsCollection:Collection, robotLogsCollection:Collection, publicBridgeAddress:string):void {
+    public updateDbLogConnect(robotsCollection:Collection, robotLogsCollection:Collection, publicBridgeAddress:string):void {
 
         this.timeConnected = new Date();
         robotsCollection.updateOne({_id: this.idRobot},
@@ -325,6 +328,8 @@ export class Robot {
                                         git_tag: this.git_tag,
                                         last_connected: this.timeConnected,
                                         last_ip: this.socket.handshake.address,
+                                        ui_custom_includes_css: this.ui_custom_includes_css,
+                                        ui_custom_includes_js: this.ui_custom_includes_js,
                                     }, $inc: { total_sessions: 1 } });
 
         robotLogsCollection.insertOne({

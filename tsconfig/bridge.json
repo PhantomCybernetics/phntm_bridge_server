@@ -1,6 +1,6 @@
 {
   "extends": "./common",
   "include": [
-    "../src/CloudBridge.ts"
+    "../src/BridgeServer.ts"
   ]
 }

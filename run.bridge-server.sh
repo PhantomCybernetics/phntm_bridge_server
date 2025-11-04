@@ -13,10 +13,10 @@ _term() {
 trap _term SIGTERN
 
 if [ $CODE -eq 0 ] ; then
-	echo -e "\033[32m[tsc good, launching Cloud Bridge Node...]\033[0m"
+	echo -e "\033[32m[tsc good, launching Phantom Bridge Server Node...]\033[0m"
 	clear
 	trap 'kill -TERM $PID' TERM INT
-	node ./build/CloudBridge.js "$@" &
+	node ./build/BridgeServer.js "$@" &
 	PID=$!
 	wait $PID
 	trap - TERM INT
