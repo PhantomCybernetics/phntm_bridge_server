@@ -82,5 +82,5 @@
     enable_docker_control: True # Docker control via Agent
 
     ## User input config
-    # input_drivers: [ 'JoyInputDriver', 'TwistInputDriver' ] # enabled input drivers
+    input_drivers: [ 'JoyInputDriver', 'TwistInputDriver' ] # enabled input drivers
     # input_defaults: /ros2_ws/phntm_input_config.json # path to input config file mounted inside the container
