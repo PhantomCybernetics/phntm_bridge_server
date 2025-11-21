@@ -4,7 +4,6 @@ const bcrypt = require('bcrypt-nodejs');
 import * as express from "express";
 const fs = require('fs');
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId, FindCursor } from 'mongodb';
-// const yaml = require('js-yaml');
 const path = require('path');
 const crypto = require('crypto');
 
