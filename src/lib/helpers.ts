@@ -72,4 +72,14 @@ export async function SendEmail(to: string, subject: string, body: string, sende
     } catch (error) {
         $d.err("Error sending email:", error);
     }
+}
+
+export function GetDomainName(url: string): string | null {
+  try {
+    const urlObject = new URL(url);
+    return urlObject.hostname;
+  } catch (error) {
+    console.error("Invalid URL:", error);
+    return null;
   }
+}

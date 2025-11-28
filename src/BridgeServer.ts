@@ -5,7 +5,7 @@ const $d:Debugger = Debugger.Get('Bridge Server');
 
 import { SESClient } from "@aws-sdk/client-ses";
 
-import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail, GetDomainName } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -93,6 +93,17 @@ const ICE_SYNC_SECRET:string = CONFIG['ICE_SYNC'].secret;
 const SES_AWS_REGION:string = CONFIG['BRIDGE'].sesAWSRegion;
 const sesClient = new SESClient({ region: SES_AWS_REGION });
 const EMAIL_SENDER:string = CONFIG['BRIDGE'].emailSender;
+
+// gosquared credentials
+const GS_API_KEY:string = CONFIG['BRIDGE'].gsApiKey;
+const GS_SITE_TOKEN:string = CONFIG['BRIDGE'].gsSiteToken;
+let GSQ:any|null = null; 
+if (GS_API_KEY && GS_SITE_TOKEN) {
+    GSQ = {
+        site_token: GS_SITE_TOKEN,
+        api_key: GS_API_KEY // https://www.gosquared.com/settings/api
+    };
+}
 
 $d.log('Staring up...');
 console.log('-----------------------------------------------------------------------'.yellow);
@@ -413,6 +424,7 @@ bridgeExpressApp.get('/info', function(req: any, res: any) {
 
 registerExpressApp.get('/robot', async function(req:express.Request, res:express.Response) {
 
+    // return default config for robot id + key pair
     if (req.query.id !== undefined || req.query.key !== undefined) {
         let robotUIAddress = UI_ADDRESS_PREFIX + req.query.id as string;
         return await Robot.GetDefaultConfig(req, res, 
@@ -421,13 +433,15 @@ registerExpressApp.get('/robot', async function(req:express.Request, res:express
             DEFAULT_MAINTAINER_EMAIL);
     }
     
+    // return default config for new robot
     return await Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
         robotsCollection,
         PUBLIC_BRIDGE_ADDRESS,
         ICE_SYNC_SERVERS,
         ICE_SYNC_PORT,
-        ICE_SYNC_SECRET
+        ICE_SYNC_SECRET,
+        UI_ADDRESS_PREFIX, GSQ
     );
 });
 
@@ -443,7 +457,6 @@ registerExpressApp.post('/locate', async function(req:express.Request, res:expre
         return res.status(403).send('Access denied, invalid credentials');
     }
     if (!robotId || !ObjectId.isValid(robotId)) {
-        $d.err('Invalid id_robot provided in /locate: ', req.body)
         return res.status(404).send('Robot not found');
     }
 
@@ -589,6 +602,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
     robot.socket = robotSocket;
 
+    // send email on maintainer_email or robot name change
     if (robot.maintainer_email != robotSocket.dbData.maintainer_email || robot.name != robotSocket.dbData.name) {
         if (robot.maintainer_email) {
             $d.log('Robot name or maintainer\'s e-mail of '+robot.idRobot.toString()+' changed, sending link...');
@@ -603,6 +617,30 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
                        '\n' +
                        '- Phantom Bridge';
             SendEmail(robot.maintainer_email, subject, body, EMAIL_SENDER, sesClient);
+        }
+    }
+
+    // robot first connected
+    if (!robotSocket.dbData.last_connected && GSQ) {
+        const response = await fetch('https://api.gosquared.com/tracking/v1/event?api_key='+GSQ.api_key+'&site_token='+GSQ.site_token, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                'event': {
+                    'name': 'Robot activated (' + GetDomainName(PUBLIC_BRIDGE_ADDRESS) + ')',
+                    'data': {
+                        'id_robot': robot.idRobot.toString()
+                    }
+                },
+                'ip': robot.socket.handshake.address,
+                'page': {
+                    'url': UI_ADDRESS_PREFIX + '#' + robot.idRobot.toString()
+                }
+            })
+        });
+        const responseData:any = await response.json();
+        if (!responseData.success) {
+            $d.err('Got error from GSQ "activate" event: ', responseData);
         }
     }
 
@@ -624,8 +662,8 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         if (!robot.isAuthentificated || !robot.isConnected)
             return;
 
-        let id_app:ObjectId = update_data['id_app'] && ObjectId.isValid(update_data['id_app']) ? new ObjectId(update_data['id_app']) : null;
-        let id_instance:ObjectId = update_data['id_instance'] && ObjectId.isValid(update_data['id_instance']) ? new ObjectId(update_data['id_instance']) : null;
+        let id_app:ObjectId|null = update_data['id_app'] && ObjectId.isValid(update_data['id_app']) ? new ObjectId(update_data['id_app']) : null;
+        let id_instance:ObjectId|null = update_data['id_instance'] && ObjectId.isValid(update_data['id_instance']) ? new ObjectId(update_data['id_instance']) : null;
         delete update_data['id_app']
         delete update_data['id_instance']
         update_data = robot.getStateData(update_data)

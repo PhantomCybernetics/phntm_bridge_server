@@ -4,7 +4,7 @@ const $d:Debugger = Debugger.Get();
 import * as SocketIO from "socket.io";
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId, FindCursor } from 'mongodb';
 import { App } from './app'
-import { ErrOutText } from './helpers'
+import { ErrOutText, GetDomainName } from './helpers'
 
 const bcrypt = require('bcrypt-nodejs');
 import * as express from "express";
@@ -400,7 +400,8 @@ export class Robot {
 
     static async Register(req:express.Request, res:express.Response, setPassword:string, robotsCollection:Collection,
         publicBridgeAddress:string,
-        iceSyncServers:string[], iceSyncPort:number, iceSyncSecret:string
+        iceSyncServers:string[], iceSyncPort:number, iceSyncSecret:string,
+        uiAddressPrefix:string, gosquared:any
     ) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const saltRounds = 10;
@@ -425,6 +426,31 @@ export class Robot {
                 $d.l(('Registered new robot id '+robotReg.insertedId.toString()+' from '+remote_ip).yellow);
                 
                 Robot.SyncICECredentials(robotReg.insertedId.toString(), ice_secret, iceSyncServers, iceSyncPort, iceSyncSecret);
+                
+                if (gosquared) {
+                    const response = await fetch('https://api.gosquared.com/tracking/v1/event?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            'event': {
+                                'name': 'Robot registered (' + GetDomainName(publicBridgeAddress) + ')',
+                                'data': {
+                                    'id_robot': robotReg.insertedId.toString()
+                                }
+                            },
+                            'ip': remote_ip,
+                            'page': {
+                                'url': uiAddressPrefix + '#' + robotReg.insertedId.toString()
+                            }
+                        })
+                    });
+                    const responseData:any = await response.json();
+                    if (!responseData.success) {
+                        $d.err('Got error from GSQ "register" event: ', responseData);
+                    } // else {
+                    //     $d.log('GSQ "register" event reply', responseData);
+                    // }
+                }
 
                 if (req.query.yaml !== undefined) {
                     return res.redirect('/robot?yaml&id='+robotReg.insertedId.toString()+'&key='+setPassword);
