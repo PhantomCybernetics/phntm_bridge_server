@@ -129,9 +129,9 @@ if (!ALL_SELECTED && SELECTED_ROBOT_IDS.length) {
     }
 }
 
-let db:Db = null;
+let db:Db;
 
-let robotsCollection:Collection = null;
+let robotsCollection:Collection;
 const mongoClient = new MongoClient(DB_URL);
 mongoClient.connect().then(async (client:MongoClient) => {
     $d.log(("We are connected to "+DB_URL).green);

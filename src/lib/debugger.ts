@@ -1,6 +1,5 @@
-
 //const C = require('colors'); //force import typings with string prototype extension
-import * as C from 'colors';
+// import * as C from 'colors';
 
 class Debugger {
 

@@ -23,8 +23,8 @@ export class App {
     servedMsgDefs:string[] = [];
     robotSubscriptions: {
         id_robot: ObjectId,
-        read?:string[],
-        write?:string[][],
+        read:string[],
+        write:string[][],
         wrtc_connection_state?:string,
         wrtc_connection_method?:string,
         wrtc_connection_ip?:string
@@ -32,13 +32,19 @@ export class App {
 
     static connectedApps:App[] = [];
 
-    constructor(idInstance?:string) {
+    constructor(idApp:string, idInstance:string, name:string, appSocket:AppSocket) {
+        this.idApp = new ObjectId(idApp)
+        this.name = name;
+        this.socket = appSocket;
         //generates new instance id if undefined
         this.idInstance = new ObjectId(idInstance);
         this.filesSecret = new ObjectId();
+        this.isConnected = true;
+        this.robotSubscriptions = [];
+        this.isAuthentificated = false;
     }
 
-    static FindConnected(idApp:ObjectId, idInstance:ObjectId):App {
+    static FindConnected(idApp:ObjectId, idInstance:ObjectId):App|null {
 
         for (let i = 0; i < App.connectedApps.length; i++) {
             if (App.connectedApps[i].idApp.equals(idApp) &&
@@ -65,7 +71,7 @@ export class App {
         }
     }
 
-    public subscribeRobot(idRobot: ObjectId, read?:string[], write?:string[][]) {
+    public subscribeRobot(idRobot: ObjectId, read:string[], write:string[][]) {
         for (let i = 0; i < this.robotSubscriptions.length; i++) {
             if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
                 this.robotSubscriptions[i].read = read;
@@ -80,7 +86,7 @@ export class App {
         });
     }
 
-    public addToRobotSubscriptions(idRobot: ObjectId, read?:string[], write?:string[][]) {
+    public addToRobotSubscriptions(idRobot: ObjectId, read:string[]|null, write:string[][]|null) {
         for (let i = 0; i < this.robotSubscriptions.length; i++) {
             if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
 
@@ -101,7 +107,7 @@ export class App {
         }
     }
 
-    public removeFromRobotSubscriptions(idRobot: ObjectId, read?:string[], write?:string[]) {
+    public removeFromRobotSubscriptions(idRobot: ObjectId, read:string[]|null, write:string[]|null) {
         for (let i = 0; i < this.robotSubscriptions.length; i++) {
             if (this.robotSubscriptions[i].id_robot.equals(idRobot)) {
 

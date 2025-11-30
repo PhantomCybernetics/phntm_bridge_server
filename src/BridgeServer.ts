@@ -123,11 +123,11 @@ console.log(('Total unique ICE servers to sync with: '+ICE_SYNC_SERVERS.length).
 console.log(('ICE sync port: '+ICE_SYNC_PORT).green);
 console.log('----------------------------------------------------------------------'.yellow);
 
-let db:Db = null;
-let humansCollection:Collection = null;
-let robotsCollection:Collection = null;
-let robotLogsCollection:Collection = null;
-let appsCollection:Collection = null;
+let db:Db|null = null;
+let humansCollection:Collection;
+let robotsCollection:Collection;
+let robotLogsCollection:Collection;
+let appsCollection:Collection;
 
 const registerExpressApp = express();
 const registerHttpServer = https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, registerExpressApp);
@@ -152,7 +152,7 @@ filesApp.use((req, res, next) => {
 filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
 
     let auth_ok = false;
-    let app:App = null;
+    let app:App|null = null;
     for (let i = 0; i < App.connectedApps.length; i++) {
         let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
         app = App.connectedApps[i];
@@ -164,7 +164,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
 
     let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
 
-    if (!auth_ok) {    
+    if (!auth_ok || !app) {    
         $d.e('Access to file fw denied '+req.params.FILE_URL+'; secret='+req.params.SECRET+'; IP='+remote_ip);
         return res.sendStatus(403); //access denied
     }
@@ -183,12 +183,12 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
 
     let fname_cache = GetCachedFileName(req.params.FILE_URL);
     
-    let path_cache = FILES_CACHE_DIR ? FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache : null;
-
     if (!FILES_CACHE_DIR)  {
         $d.e('Files chache dir not set');
         return res.sendStatus(500); // not caching but should => internal server error
     }
+
+    let path_cache = FILES_CACHE_DIR+'/'+id_robot.toString()+'/'+fname_cache;
     
     try {
         await fs.promises.access(path_cache, fs.constants.R_OK);
@@ -211,12 +211,12 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
         // check cache folder
         try {
             await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
-        } catch (err1) {
+        } catch (err1:any) {
             try {
                 $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
                 await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
-            } catch (err2) {
-                if (err2.code != 'EEXIST') { // created since first check
+            } catch (err2:any) {
+                if (err2 && err2.code != 'EEXIST') { // created since first check
                     $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), err2);
                     return res.sendStatus(500); // not caching but should => internal server error
                 }
@@ -577,30 +577,27 @@ sioRobots.use(async(robotSocket:RobotSocket, next) => {
 
 sioRobots.on('connect', async function(robotSocket : RobotSocket){
 
-    let robot:Robot = new Robot();
-    robot.idRobot = robotSocket.dbData._id;
-    robot.name = robotSocket.handshake.auth.name ? robotSocket.handshake.auth.name : (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot' );
-    robot.maintainer_email = robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email;
-    
-    robot.ros_distro = robotSocket.handshake.auth.ros_distro ? robotSocket.handshake.auth.ros_distro : '';
-    robot.git_sha = robotSocket.handshake.auth.git_sha ? robotSocket.handshake.auth.git_sha : '';
-    robot.git_tag = robotSocket.handshake.auth.git_tag ? robotSocket.handshake.auth.git_tag : '';
+    let robot:Robot = new Robot(
+        robotSocket.dbData._id,
+        robotSocket,
+        robotSocket.handshake.auth.name ? robotSocket.handshake.auth.name : (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot'),
+        robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email,
+        robotSocket.handshake.auth.peer_limit,
+        robotSocket.handshake.auth.ros_distro,
+        robotSocket.handshake.auth.git_sha,
+        robotSocket.handshake.auth.git_tag,
+        robotSocket.handshake.auth.ui_custom_includes_js,
+        robotSocket.handshake.auth.ui_custom_includes_css
+    );
 
     $d.log(('Ohi, robot ' + robot.name+' aka ' + robot.idRobot.toString() +' ['+robot.ros_distro+'] connected to Socket.io').cyan);
-
-    robot.ui_peer_limit = robotSocket.handshake.auth.ui_peer_limit ? robotSocket.handshake.auth.ui_peer_limit : 0;
-    $d.log('Robot ' + robot.idRobot.toString() + ' UI peer limit is '+robot.ui_peer_limit);
-
-    robot.ui_custom_includes_js = robotSocket.handshake.auth.ui_custom_includes_js ? robotSocket.handshake.auth.ui_custom_includes_js : [];
-    robot.ui_custom_includes_css = robotSocket.handshake.auth.ui_custom_includes_css ? robotSocket.handshake.auth.ui_custom_includes_css : [];
+    $d.log('Robot ' + robot.idRobot.toString() + ' UI peer limit is '+robot.peer_limit);
     if (robot.ui_custom_includes_js.length)
         $d.log('Robot ' + robot.idRobot.toString() + ' UI custom JS includes ', robot.ui_custom_includes_js);
     if (robot.ui_custom_includes_css.length)
         $d.log('Robot ' + robot.idRobot.toString() + ' UI custom CSS includes ', robot.ui_custom_includes_css);
 
-    robot.isAuthentificated = true;
     let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
-    robot.socket = robotSocket;
 
     // send email on maintainer_email or robot name change
     if (robot.maintainer_email != robotSocket.dbData.maintainer_email || robot.name != robotSocket.dbData.name) {
@@ -644,14 +641,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         }
     }
 
-    robot.isConnected = true;
     robot.updateDbLogConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);
-
-    robot.topics = [];
-    robot.services = [];
-    robot.cameras = [];
-    robot.docker_containers = [];
-    robot.introspection = false;
 
     robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret }); // push this before peer info
 
@@ -669,8 +659,11 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         update_data = robot.getStateData(update_data)
 
         $d.l("Got peer:update from "+robot.idRobot+" for peer "+id_app+"/"+id_instance+": ", update_data);
+        if (!id_app || !id_instance)
+            return;
+        
         let app = App.FindConnected(id_app, id_instance);
-        if (app && app.getRobotSubscription(robot.idRobot)) {
+        if (app && app.getRobotSubscription(robot.idRobot) && app.socket) {
             app.socket.emit('robot:update', update_data, (app_answer:any) => {
                 return_callback(app_answer);
             });
@@ -785,7 +778,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         robot.topics = [];
         robot.services = [];
         robot.logDisconnect(robotsCollection, robotLogsCollection, disconnectEvent, () => {
-            robot.socket = null;
+            // robot.socket = null;
             robot.removeFromConnected(!shuttingDown);
         });
     });
@@ -850,13 +843,14 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
     $d.log('Connected w id_instance: ', appSocket.handshake.auth.id_instance);
 
-    let app:App = new App(appSocket.handshake.auth.id_instance); //id instance generated in constructor, if not provided
-    app.idApp = new ObjectId(appSocket.handshake.auth.id_app)
-    app.name = appSocket.dbData.name;
-    app.socket = appSocket;
-    app.isConnected = true;
-    app.robotSubscriptions = [];
-
+    let app:App = new App(
+        appSocket.handshake.auth.id_app,
+        appSocket.handshake.auth.id_instance,
+        appSocket.dbData.name,
+        appSocket
+    ); //id instance generated in constructor, if not provided
+    
+  
     $d.log(('Ohi, app '+app.name+' aka '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') connected to Socket.io').cyan);
 
     app.addToConnected();
@@ -885,7 +879,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
                 return returnCallback({'err':1, 'msg': 'Robot not found here (did you register it first?)'}); //invalid id
             }
 
-            app.subscribeRobot(id_robot, data.read, data.write);
+            app.subscribeRobot(id_robot, data.read ? data.read : [], data.write ? data.write : []);
 
             return returnCallback({
                 id_robot: id_robot.toString(),
@@ -893,14 +887,14 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             });
         }
 
-        app.subscribeRobot(robot.idRobot, data.read, data.write);
-        if (true) // TODO: check max peer number
-            robot.initPeer(app, data.read, data.write, VERBOSE_WEBRTC, VERBOSE_DEFS, returnCallback);
-        else
-            robot.peersToToSubscribers();
+        app.subscribeRobot(robot.idRobot, data.read ? data.read : [], data.write ? data.write : []);
+        //if (true) // TODO: check max peer number
+            robot.initPeer(app, data.read ? data.read : [], data.write ? data.write : [], VERBOSE_WEBRTC, VERBOSE_DEFS, returnCallback);
+        //else
+        //    robot.peersToToSubscribers();
     });
 
-    function ProcessForwardRequest(app:App, data:{ id_robot:string, id_app?:string, id_instance?:string}, returnCallback:any):Robot|boolean {
+    function ProcessForwardRequest(app:App, data:{ id_robot?:string, id_app?:string, id_instance?:string}, returnCallback:any):Robot|boolean {
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
             if (returnCallback) {
@@ -934,7 +928,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         $d.log('App requesting robot introspection', data);
 
         let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot)
+        if (!robot || !robot.socket)
             return;
 
         robot.socket.emit('introspection', data, (answerData:any) => {
@@ -961,6 +955,9 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         app.addToRobotSubscriptions(robot.idRobot, data.sources, null)
+
+        if (!robot.socket)
+            return;
 
         robot.socket.emit('subscribe', data, (resData:any) => {
 
@@ -990,6 +987,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.addToRobotSubscriptions(robot.idRobot, null, data.sources)
 
+        if (!robot.socket)
+            return;
         robot.socket.emit('subscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s write subscription answer:', resData);
@@ -1028,9 +1027,9 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         app.removeFromRobotSubscriptions(id_robot, data.sources, null);
 
         let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot)
-            return;        
-
+        if (!robot || !robot.socket)
+            return;
+        
         robot.socket.emit('unsubscribe', data, (resData:any) => {
 
             $d.log('Got robot\'s unsubscription answer:', resData);
@@ -1058,6 +1057,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.removeFromRobotSubscriptions(robot.idRobot, null, data.sources);
 
+        if (!robot.socket)
+            return;
         robot.socket.emit('unsubscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s unsubscription answer:', resData);
@@ -1087,6 +1088,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
+        if (!robot.socket)
+            return;
         robot.socket.emit('sdp:answer', data, (resData:any) => {
 
             $d.log('Got robot\'s sdp:answer answer:', resData);
@@ -1114,6 +1117,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
+        if (!robot.socket)
+            return;
         robot.socket.emit('service', data, (resData:any) => {
 
             $d.log('Got robot\'s service call answer:', resData);
@@ -1164,7 +1169,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.isAuthentificated = false;
         app.isConnected = false;
-        app.socket = null;
+        // app.socket = null;
         app.removeFromConnected();
 
         for (let i = 0; i < app.robotSubscriptions.length; i++) {

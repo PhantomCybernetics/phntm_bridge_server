@@ -28,10 +28,10 @@ export class Robot {
     ros_distro: string;
     git_sha: string;
     git_tag: string;
-    ui_peer_limit: number;
+    peer_limit: number;
     ui_custom_includes_js: string[];
     ui_custom_includes_css: string[];
-    type: ObjectId;
+    // type: ObjectId;
     isConnected: boolean;
     isAuthentificated: boolean;
     socket: RobotSocket;
@@ -52,6 +52,28 @@ export class Robot {
     introspection: boolean;
 
     static connectedRobots:Robot[] = [];
+
+    public constructor(idRobot:ObjectId, robotSocket:RobotSocket, name:string, maintainer_email:string, peer_limit:number, ros_distro:string, git_sha:string, git_tag:string, ustom_includes_js:string[], custom_includes_css:string[]) {
+        this.idRobot = idRobot;
+        this.socket = robotSocket;
+        this.name = name;
+        this.maintainer_email = maintainer_email;
+        this.peer_limit = peer_limit ? peer_limit : 0; 
+        this.ros_distro = ros_distro ? ros_distro : '';
+        this.git_sha = git_sha ? git_sha : '';
+        this.git_tag = git_tag ? git_tag : '';
+        this.ui_custom_includes_js = ustom_includes_js ? ustom_includes_js : [];
+        this.ui_custom_includes_css = custom_includes_css ? custom_includes_css : [];
+        this.isAuthentificated = true;
+        this.isConnected = true;
+        this.topics = [];
+        this.services = [];
+        this.cameras = [];
+        this.nodes = [];
+        this.docker_containers = [];
+        this.introspection = false;
+        this.timeConnected = new Date();
+    }
 
     public addToConnected(verbose_webrtc:boolean, verbose_defs:boolean) {
         if (Robot.connectedRobots.indexOf(this) == -1) {
@@ -183,6 +205,8 @@ export class Robot {
                 $d.l(msg_type+' -> '+defs.length+' defs:');
             for (let k = 0; k < defs.length; k++) {
                 let def = defs[k];
+                if (!def.name)
+                    continue;
                 if (this.msg_defs[def.name])
                     continue; // only once per robot session
                 if (verbose)
@@ -317,7 +341,6 @@ export class Robot {
 
     public updateDbLogConnect(robotsCollection:Collection, robotLogsCollection:Collection, publicBridgeAddress:string):void {
 
-        this.timeConnected = new Date();
         robotsCollection.updateOne({_id: this.idRobot},
                                    { $set: {
                                         name: this.name,
