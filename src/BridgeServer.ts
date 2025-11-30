@@ -175,7 +175,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
     }
     let id_robot = new ObjectId(req.params.ID_ROBOT);
     let robot = Robot.FindConnected(id_robot);
-    if (!robot || !robot.socket) {
+    if (!robot) {
         $d.e('Error seding cached file, robot '+id_robot+' not connected');
         return res.sendStatus(502); //bad gateway
     }
@@ -663,7 +663,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
             return;
         
         let app = App.FindConnected(id_app, id_instance);
-        if (app && app.getRobotSubscription(robot.idRobot) && app.socket) {
+        if (app && app.getRobotSubscription(robot.idRobot)) {
             app.socket.emit('robot:update', update_data, (app_answer:any) => {
                 return_callback(app_answer);
             });
@@ -871,7 +871,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
         let id_robot = new ObjectId(data.id_robot);
         let robot = Robot.FindConnected(id_robot);
-        if (!robot || !robot.socket) {
+        if (!robot) {
             // robot not connected, check it exists and return basic info
             // TODO perhaps make this behavior optional?
             const dbRobot = (await robotsCollection.findOne({_id: id_robot }));
@@ -907,7 +907,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
         let id_robot = new ObjectId(data.id_robot);
         let robot = Robot.FindConnected(id_robot);
-        if (!robot || !robot.socket) {
+        if (!robot) {
             if (returnCallback) {
                 returnCallback({
                     'err': 1,
@@ -928,7 +928,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         $d.log('App requesting robot introspection', data);
 
         let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot || !robot.socket)
+        if (!robot)
             return;
 
         robot.socket.emit('introspection', data, (answerData:any) => {
@@ -955,9 +955,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         app.addToRobotSubscriptions(robot.idRobot, data.sources, null)
-
-        if (!robot.socket)
-            return;
 
         robot.socket.emit('subscribe', data, (resData:any) => {
 
@@ -987,8 +984,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.addToRobotSubscriptions(robot.idRobot, null, data.sources)
 
-        if (!robot.socket)
-            return;
         robot.socket.emit('subscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s write subscription answer:', resData);
@@ -1027,7 +1022,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         app.removeFromRobotSubscriptions(id_robot, data.sources, null);
 
         let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
-        if (!robot || !robot.socket)
+        if (!robot)
             return;
         
         robot.socket.emit('unsubscribe', data, (resData:any) => {
@@ -1057,8 +1052,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         app.removeFromRobotSubscriptions(robot.idRobot, null, data.sources);
 
-        if (!robot.socket)
-            return;
         robot.socket.emit('unsubscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s unsubscription answer:', resData);
@@ -1088,8 +1081,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        if (!robot.socket)
-            return;
         robot.socket.emit('sdp:answer', data, (resData:any) => {
 
             $d.log('Got robot\'s sdp:answer answer:', resData);
@@ -1117,8 +1108,6 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        if (!robot.socket)
-            return;
         robot.socket.emit('service', data, (resData:any) => {
 
             $d.log('Got robot\'s service call answer:', resData);
@@ -1149,7 +1138,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         // pass back to the robot to handle failures
         let robot = Robot.FindConnected(id_robot);
-        if (robot && robot.socket) {
+        if (robot) {
             robot.socket.emit('peer:wrtc-info', {
                 id_app: app.idApp.toString(),
                 id_instance: app.idInstance.toString(),
@@ -1175,7 +1164,7 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         for (let i = 0; i < app.robotSubscriptions.length; i++) {
             let id_robot = app.robotSubscriptions[i].id_robot;
             let robot = Robot.FindConnected(id_robot);
-            if (robot && robot.socket) {
+            if (robot) {
                 robot.socket.emit('peer:disconnected', {
                     id_app: app.idApp.toString(),
                     id_instance: app.idInstance.toString()
