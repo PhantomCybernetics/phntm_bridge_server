@@ -15,18 +15,18 @@ export function ErrOutText(msg:string, res: any) {
 }
 
 export function GetCerts (priv: string, pub: string) : string[] {
-    let certFiles : string[] = [priv, pub];
+    let cert_files : string[] = [priv, pub];
     const fs = require('fs');
     for (var i = 0; i < 2; i++) {
-        if (!fs.existsSync(certFiles[i])) {
-            $d.log((certFiles[i]+" not found. Run `sh ./ssl/gen.sh` to generate a self signed SSL certificate").red);
+        if (!fs.existsSync(cert_files[i])) {
+            $d.log((cert_files[i]+" not found. Run `sh ./ssl/gen.sh` to generate a self signed SSL certificate").red);
             break;
         }
     }
-    return certFiles;
+    return cert_files;
 }
 
-export function UncaughtExceptionHandler (err: any, dieOnException:boolean) : void {
+export function UncaughtExceptionHandler (err: any, die_on_exception:boolean) : void {
 
     //const $t = $s.$t;
 
@@ -36,7 +36,7 @@ export function UncaughtExceptionHandler (err: any, dieOnException:boolean) : vo
 
     $d.log(err.stack);
     if (err && err.code && typeof err.code === 'string' && err.code.indexOf('EADDRINUSE') !== -1) Die("Port busy");
-    if (dieOnException) {
+    if (die_on_exception) {
         Die();
     }
 }
@@ -48,14 +48,14 @@ export function Die (message?: string) : void{
     process.exit(1);
 }
 
-export function GetCachedFileName(fileUrl:string) : string{
-    let base = path.basename(fileUrl)
+export function GetCachedFileName(file_url:string) : string{
+    let base = path.basename(file_url)
     // let ext = path.extname(req.params.FILE_URL);
-    let hash = crypto.createHash('md5').update(fileUrl).digest("hex");
+    let hash = crypto.createHash('md5').update(file_url).digest("hex");
     return hash+'-'+base;
 }
 
-export async function SendEmail(to: string, subject: string, body: string, sender:string, sesClient:SESClient) {
+export async function SendEmail(to: string, subject: string, body: string, sender:string, ses_client:SESClient) {
     const params = {
         Destination: { ToAddresses: [to] },
         Message: {
@@ -67,7 +67,7 @@ export async function SendEmail(to: string, subject: string, body: string, sende
   
     try {
         const command = new SendEmailCommand(params);
-        const response = await sesClient.send(command);
+        const response = await ses_client.send(command);
         $d.log("Email sent successfully:", response.MessageId);
     } catch (error) {
         $d.err("Error sending email:", error);
@@ -76,8 +76,8 @@ export async function SendEmail(to: string, subject: string, body: string, sende
 
 export function GetDomainName(url: string): string | null {
   try {
-    const urlObject = new URL(url);
-    return urlObject.hostname;
+    const url_object = new URL(url);
+    return url_object.hostname;
   } catch (error) {
     console.error("Invalid URL:", error);
     return null;

@@ -17,7 +17,7 @@ import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId } fr
 import * as SocketIO from "socket.io";
 import * as express from "express";
 
-import { App, AppSocket } from './lib/app'
+import { PeerApp, PeerAppSocket } from './lib/peerApp'
 import { Robot, RobotSocket } from './lib/robot'
 
 // load config & ssl certs //
@@ -51,6 +51,7 @@ const VERBOSE_SERVICES:boolean = CONFIG['BRIDGE'].verboseServices;
 const VERBOSE_TOPICS:boolean = CONFIG['BRIDGE'].verboseTopics;
 const VERBOSE_NODES:boolean = CONFIG['BRIDGE'].verboseNodes;
 const VERBOSE_DOCKER:boolean = CONFIG['BRIDGE'].verboseDocker;
+const VERBOSE_PEERS:boolean = CONFIG['BRIDGE'].verbosePeers;
 
 const DB_URL:string = CONFIG.dbUrl;
 const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
@@ -59,24 +60,25 @@ const REGISTER_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].registerSsl.private;
 const REGISTER_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].registerSsl.public;
 const DIE_ON_EXCEPTION:boolean = CONFIG.dieOnException;
 
-const regCertFiles:string[] = GetCerts(REGISTER_SSL_CERT_PRIVATE, REGISTER_SSL_CERT_PUBLIC);
+const reg_cert_files:string[] = GetCerts(REGISTER_SSL_CERT_PRIVATE, REGISTER_SSL_CERT_PUBLIC);
 const REGISTER_HTTPS_SERVER_OPTIONS = {
-    key: fs.readFileSync(regCertFiles[0]),
-    cert: fs.readFileSync(regCertFiles[1]),
+    key: fs.readFileSync(reg_cert_files[0]),
+    cert: fs.readFileSync(reg_cert_files[1]),
 };
-const bridgeCertFiles:string[] = GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC);
+const bridge_cert_files:string[] = GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC);
 const BRIDGE_HTTPS_SERVER_OPTIONS = {
-    key: fs.readFileSync(bridgeCertFiles[0]),
-    cert: fs.readFileSync(bridgeCertFiles[1]),
+    key: fs.readFileSync(bridge_cert_files[0]),
+    cert: fs.readFileSync(bridge_cert_files[1]),
 };
 
 const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
 
-const ICE_SERVERS:string[] = CONFIG['BRIDGE'].iceServers;
+const ICE_SERVERS:string[] = [];
 const ICE_SYNC_SERVERS:string[] = [];
-if (ICE_SERVERS) {
-    ICE_SERVERS.forEach((one_server:string)=>{
+if (CONFIG['BRIDGE'].iceServers) {
+    CONFIG['BRIDGE'].iceServers.forEach((one_server:string)=>{
+        ICE_SERVERS.push(one_server);
         let serverParts = one_server.split(':');
         if (serverParts.length != 3) {
             $d.err('Server misconfigured in config: '+one_server+'; ingnoring in sync');
@@ -116,47 +118,47 @@ console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info               
 console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/         Robot API').cyan);
 console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/app/socket.io/           App API').cyan);
 console.log('----------------------------------------------------------------------'.yellow);
-console.log(('Using register certs: ').green, { key: regCertFiles[0], cert: regCertFiles[1] });
-console.log(('Using bridge certs: ').green, { key: bridgeCertFiles[0], cert: bridgeCertFiles[1] });
+console.log(('Using register certs: ').green, { key: reg_cert_files[0], cert: reg_cert_files[1] });
+console.log(('Using bridge certs: ').green, { key: bridge_cert_files[0], cert: bridge_cert_files[1] });
 console.log('Using ICE servers: '.green, ICE_SERVERS);
 console.log(('Total unique ICE servers to sync with: '+ICE_SYNC_SERVERS.length).green);
 console.log(('ICE sync port: '+ICE_SYNC_PORT).green);
 console.log('----------------------------------------------------------------------'.yellow);
 
-let db:Db|null = null;
-let humansCollection:Collection;
-let robotsCollection:Collection;
-let robotLogsCollection:Collection;
-let appsCollection:Collection;
+let db:Db;
+let humans_collection:Collection;
+let robots_collection:Collection;
+let robot_logs_collection:Collection;
+let apps_collection:Collection;
 
-const registerExpressApp = express();
-const registerHttpServer = https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, registerExpressApp);
+const register_express = express();
+const register_http_server = https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, register_express);
 
-const bridgeExpressApp = express();
-const bridgeHttpServer = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridgeExpressApp);
+const bridge_express = express();
+const bridge_http_server = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridge_express);
 
-const filesApp = express();
-const filesHttpServer = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, filesApp);
+const files_express = express();
+const files_http_server = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, files_express);
 
 process.on('uncaughtException', function(err) {
     $d.e('Caught unhandled exception: ', err);
 });
 
-filesApp.use((req, res, next) => {
+files_express.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, PUT");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     next();
 });
 
-filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
+files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
 
     let auth_ok = false;
-    let app:App|null = null;
-    for (let i = 0; i < App.connectedApps.length; i++) {
-        let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
-        app = App.connectedApps[i];
-        if (req.params.SECRET == App.connectedApps[i].filesSecret.toString()) {
+    let peer_app:PeerApp|null = null;
+    for (let i = 0; i < PeerApp.connected_apps.length; i++) {
+        //let id_app:string = PeerApp.connected_apps[i].id.toString();
+        peer_app = PeerApp.connected_apps[i];
+        if (req.params.SECRET == PeerApp.connected_apps[i].files_secret.toString()) {
             auth_ok = true;
             break;
         }
@@ -164,7 +166,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
 
     let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
 
-    if (!auth_ok || !app) {    
+    if (!auth_ok || !peer_app) {    
         $d.e('Access to file fw denied '+req.params.FILE_URL+'; secret='+req.params.SECRET+'; IP='+remote_ip);
         return res.sendStatus(403); //access denied
     }
@@ -179,7 +181,7 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
         $d.e('Error seding cached file, robot '+id_robot+' not connected');
         return res.sendStatus(502); //bad gateway
     }
-    $d.l(('App #'+app.idApp.toString()+' inst #'+app.idInstance.toString()+' reguested '+req.params.FILE_URL+' for robot #'+id_robot).cyan);
+    $d.l((peer_app + ' reguested ' + req.params.FILE_URL + ' for robot #'+id_robot).cyan);
 
     let fname_cache = GetCachedFileName(req.params.FILE_URL);
     
@@ -230,14 +232,14 @@ filesApp.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request,
     return robot.socket.emit('file', req.params.FILE_URL, async (robot_res:any) => {
 
         if (!robot_res || robot_res.err || !robot_res.fileName) {
-            $d.e('Robot returned error... ', robot_res);
+            $d.e(robot + ' returned error... ', robot_res);
             return res.sendStatus(404); // not found
         }
 
-        $d.l(('Robot uploaded file '+robot_res.fileName).cyan);
+        $d.l((robot + ' uploaded file '+robot_res.fileName).cyan);
 
         if (!path_cache.endsWith(robot_res.fileName)) {
-            $d.l('Robot returned wrong file name, requested: ', path_cache);
+            $d.l(robot+ ' robot returned wrong file name, requested: ', path_cache);
             return res.sendStatus(404); // not found
         }
 
@@ -304,8 +306,8 @@ function reject(res:any) {
     res.sendStatus(401);
 };
 
-const sioRobots:SocketIO.Server = new SocketIO.Server(
-    bridgeHttpServer, {
+const sio_robots:SocketIO.Server = new SocketIO.Server(
+    bridge_http_server, {
         pingInterval: 10000,
         pingTimeout: 60*1000,
         path: "/robot/socket.io/",
@@ -321,8 +323,8 @@ const sioRobots:SocketIO.Server = new SocketIO.Server(
 //     }
 // );
 
-const sioApps:SocketIO.Server = new SocketIO.Server(
-    bridgeHttpServer, {
+const sio_peer_apps:SocketIO.Server = new SocketIO.Server(
+    bridge_http_server, {
         pingInterval: 10000,
         pingTimeout: 60*1000,
         path: "/app/socket.io/",
@@ -333,7 +335,7 @@ const sioApps:SocketIO.Server = new SocketIO.Server(
 );
 
 // return server info in json
-bridgeExpressApp.get('/', function(req: any, res: any) {
+bridge_express.get('/', function(req: any, res: any) {
     res.setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify({
         phntm_cloud_bridge: Date.now(),
@@ -348,7 +350,7 @@ bridgeExpressApp.get('/', function(req: any, res: any) {
 });
 
 // get server utilization info
-bridgeExpressApp.get('/info', function(req: any, res: any) {
+bridge_express.get('/info', function(req: any, res: any) {
 
     if (!auth_admin(req)) {
         return reject(res);
@@ -358,8 +360,8 @@ bridgeExpressApp.get('/info', function(req: any, res: any) {
 
     let info_data:any = {
         time: new Date(),
-        numConnectedRobots: Robot.connectedRobots.length,
-        numConnectedApps: App.connectedApps.length,
+        numConnectedRobots: Robot.connected_robots.length,
+        numConnectedApps: PeerApp.connected_apps.length,
         robots: [],
         apps: [],
     };
@@ -367,49 +369,50 @@ bridgeExpressApp.get('/info', function(req: any, res: any) {
     let peers_subscribed_to_robot:any = {}
 
     let appsData = [];
-    for (let i = 0; i < App.connectedApps.length; i++) {
-        let id_app:string = (App.connectedApps[i].idApp as ObjectId).toString();
+    for (let i = 0; i < PeerApp.connected_apps.length; i++) {
+        let id_app_type:string = PeerApp.connected_apps[i].id_type.toString();
+        let id_app:string = PeerApp.connected_apps[i].id.toString();
 
         let subs:any = {};
-        if (App.connectedApps[i].robotSubscriptions) {
-            for (let j = 0; j < App.connectedApps[i].robotSubscriptions.length; j++) {
-                let id_robot:string = App.connectedApps[i].robotSubscriptions[j].id_robot.toString();
+        if (PeerApp.connected_apps[i].robot_subscriptions) {
+            for (let j = 0; j < PeerApp.connected_apps[i].robot_subscriptions.length; j++) {
+                let id_robot:string = PeerApp.connected_apps[i].robot_subscriptions[j].id_robot.toString();
                 subs[id_robot] = {
-                    wrtc_connection_state: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_state,
-                    wrtc_connection_method: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_method,
-                    wrtc_connection_ip: App.connectedApps[i].robotSubscriptions[j].wrtc_connection_ip,
+                    wrtc_connection_state: PeerApp.connected_apps[i].robot_subscriptions[j].wrtc_connection_state,
+                    wrtc_connection_method: PeerApp.connected_apps[i].robot_subscriptions[j].wrtc_connection_method,
+                    wrtc_connection_ip: PeerApp.connected_apps[i].robot_subscriptions[j].wrtc_connection_ip,
                 };
                 if (!peers_subscribed_to_robot[id_robot])
                     peers_subscribed_to_robot[id_robot] = [];
                 peers_subscribed_to_robot[id_robot].push({
                     id: id_app,
-                    inst: App.connectedApps[i].idInstance.toString()
+                    type: id_app_type
                 });
             }
         }
 
         appsData.push({
             'id': id_app,
-            'name': App.connectedApps[i].name ? App.connectedApps[i].name : 'Unnamed App',
-            'inst': App.connectedApps[i].idInstance,
-            'ip': App.connectedApps[i].socket.handshake.address,
+            'name': PeerApp.connected_apps[i].name ? PeerApp.connected_apps[i].name : 'Unnamed App',
+            'type': id_app_type,
+            'ip': PeerApp.connected_apps[i].socket.handshake.address,
             'subscriptions': subs
 	    });
     }
 
     let robotsData = [];
-    for (let i = 0; i < Robot.connectedRobots.length; i++) {
-        let id_robot:string = (Robot.connectedRobots[i].idRobot as ObjectId).toString();
+    for (let i = 0; i < Robot.connected_robots.length; i++) {
+        let id_robot:string = Robot.connected_robots[i].id.toString();
         let ui_url = UI_ADDRESS_PREFIX+id_robot;
         robotsData.push({
             'id': id_robot,
-            'name': Robot.connectedRobots[i].name ? Robot.connectedRobots[i].name : 'Unnamed Robot',
-            'maintainer_email': Robot.connectedRobots[i].maintainer_email,
-            'ros_distro': Robot.connectedRobots[i].ros_distro,
-            'git_sha': Robot.connectedRobots[i].git_sha,
-            'git_tag': Robot.connectedRobots[i].git_tag,
+            'name': Robot.connected_robots[i].name ? Robot.connected_robots[i].name : 'Unnamed Robot',
+            'maintainer_email': Robot.connected_robots[i].maintainer_email,
+            'ros_distro': Robot.connected_robots[i].ros_distro,
+            'git_sha': Robot.connected_robots[i].git_sha,
+            'git_tag': Robot.connected_robots[i].git_tag,
             'ui': ui_url,
-            'ip': Robot.connectedRobots[i].socket.handshake.address,
+            'ip': Robot.connected_robots[i].socket.handshake.address,
             'peers': peers_subscribed_to_robot[id_robot] ? peers_subscribed_to_robot[id_robot] : []
 	    });
     }
@@ -420,15 +423,16 @@ bridgeExpressApp.get('/info', function(req: any, res: any) {
     res.send(JSON.stringify(info_data, null, 4));
 });
 
+register_express.use(express.json());
 
-
-registerExpressApp.get('/robot', async function(req:express.Request, res:express.Response) {
+// register a new robot, then forward to config
+register_express.get('/robot', async function(req:express.Request, res:express.Response) {
 
     // return default config for robot id + key pair
     if (req.query.id !== undefined || req.query.key !== undefined) {
         let robotUIAddress = UI_ADDRESS_PREFIX + req.query.id as string;
         return await Robot.GetDefaultConfig(req, res, 
-            robotsCollection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT,
+            robots_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT,
             robotUIAddress,
             DEFAULT_MAINTAINER_EMAIL);
     }
@@ -436,7 +440,7 @@ registerExpressApp.get('/robot', async function(req:express.Request, res:express
     // return default config for new robot
     return await Robot.Register(
         req, res, new ObjectId().toString(), //new key generated here
-        robotsCollection,
+        robots_collection,
         PUBLIC_BRIDGE_ADDRESS,
         ICE_SYNC_SERVERS,
         ICE_SYNC_PORT,
@@ -445,89 +449,88 @@ registerExpressApp.get('/robot', async function(req:express.Request, res:express
     );
 });
 
-registerExpressApp.use(express.json());
-registerExpressApp.post('/locate', async function(req:express.Request, res:express.Response) {
+// locate robot (find its server), return with custom includes
+register_express.post('/locate', async function(req:express.Request, res:express.Response) {
 
-    let appId:string = req.body['app_id'];
-    let appKey:string = req.body['app_key'];
-    let robotId:string = req.body['id_robot'];
+    let app_id:string = req.body['app_id'];
+    let app_key:string = req.body['app_key'];
+    let robot_id:string = req.body['id_robot'];
     
-    if (!appId || !ObjectId.isValid(appId) || !appKey) {
+    if (!app_id || !ObjectId.isValid(app_id) || !app_key) {
         $d.err('Invalid app credentials provided in /locate: ', req.body)
         return res.status(403).send('Access denied, invalid credentials');
     }
-    if (!robotId || !ObjectId.isValid(robotId)) {
+    if (!robot_id || !ObjectId.isValid(robot_id)) {
         return res.status(404).send('Robot not found');
     }
 
-    let searchAppId = new ObjectId(appId);
-    const dbApp = (await appsCollection.findOne({_id: searchAppId }));
+    let search_app_id = new ObjectId(app_id);
+    const db_app = (await apps_collection.findOne({_id: search_app_id }));
     
-    if (dbApp) {
-        
-        return await bcrypt.compare(appKey, dbApp.key_hash, async (err:any, passRes:any) => {
-            if (passRes) { //pass match => good
-
-                let searchRobotId = new ObjectId(robotId as string);
-                const dbRobot = (await robotsCollection.findOne({_id: searchRobotId }));
-    
-                if (!dbRobot) {
-                    $d.err('Robot '+robotId+' not found in /locate')
-                    return res.status(404).send('Robot not found');
-                }
-
-                res.setHeader('Content-Type', 'application/json');
-                res.send(JSON.stringify({
-                    'id_robot': robotId,
-                    'bridge_server': dbRobot['bridge_server'],
-                    'ui_custom_css': dbRobot['ui_custom_includes_css'],
-                    'ui_custom_js': dbRobot['ui_custom_includes_js'],
-                }, null, 4));
-
-            } else { // invalid app key
-                $d.err('Invalid app credentials provided in /locate: ', req.body)
-                return res.status(403).send('Access denied, invalid credentials');
-            }
-        });
-
-    } else { //robot not found
-        $d.err('Invalid app credentials provided in /locate: ', req.body)
+    if (!db_app) { // app not found
+         $d.err('Invalid app credentials provided in /locate: ', req.body)
         return res.status(403).send('Access denied, invalid credentials');
     }
+        
+    return await bcrypt.compare(app_key, db_app.key_hash, async (err:any, passRes:any) => {
+        if (passRes) { //pass match => good
+
+            let searchRobotId = new ObjectId(robot_id as string);
+            const dbRobot = (await robots_collection.findOne({_id: searchRobotId }));
+
+            if (!dbRobot) {
+                $d.err('Robot '+robot_id+' not found in /locate')
+                return res.status(404).send('Robot not found');
+            }
+
+            res.setHeader('Content-Type', 'application/json');
+            res.send(JSON.stringify({
+                'id_robot': robot_id,
+                'bridge_server': dbRobot['bridge_server'],
+                'ui_custom_css': dbRobot['ui_custom_includes_css'],
+                'ui_custom_js': dbRobot['ui_custom_includes_js'],
+            }, null, 4));
+
+        } else { // invalid app key
+            $d.err('Invalid app credentials provided in /locate: ', req.body)
+            return res.status(403).send('Access denied, invalid credentials');
+        }
+    });
 });
 
-registerExpressApp.get('/app', async function(req:express.Request, res:express.Response) {
+// register new app
+register_express.get('/app', async function(req:express.Request, res:express.Response) {
 
     //return defaults for existing app
     if (req.query.id !== undefined || req.query.key !== undefined) { 
-        return App.GetDefaultConfig(req, res, 
-            appsCollection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT);
+        return PeerApp.GetDefaultConfig(req, res, 
+            apps_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT);
     }
 
     // register new app, sets name from ?name=
-    return App.Register(
+    return PeerApp.Register(
         req, res, new ObjectId().toString(), //new key generated here
-        appsCollection
+        apps_collection
     );
 });
 
-const mongoClient = new MongoClient(DB_URL);
-mongoClient.connect().then((client:MongoClient) => {
+const mongo_client = new MongoClient(DB_URL);
+mongo_client.connect().then((client:MongoClient) => {
     $d.log(("We are connected to "+DB_URL).green);
 
     db = client.db('phntm');
-    humansCollection = db.collection('humans');
-    robotsCollection = db.collection('robots');
-    robotLogsCollection = db.collection('robot_logs');
-    appsCollection = db.collection('apps');
+    humans_collection = db.collection('humans');
+    robots_collection = db.collection('robots');
+    robot_logs_collection = db.collection('robot_logs');
+    apps_collection = db.collection('apps');
 
-    registerHttpServer.listen(REGISTER_PORT);
-    bridgeHttpServer.listen(BRIDGE_SIO_PORT);
-    filesHttpServer.listen(FILES_PORT);
+    register_http_server.listen(REGISTER_PORT);
+    bridge_http_server.listen(BRIDGE_SIO_PORT);
+    files_http_server.listen(FILES_PORT);
 
     $d.l(('Bridge Socket.io listening on port '+BRIDGE_SIO_PORT+', '+
           'Register listening on port '+REGISTER_PORT+', '+
-          'file forwarder on '+FILES_PORT).green);
+          'File Forwarder on '+FILES_PORT).green);
 
 }).catch(()=>{
     $d.err("Error connecting to", DB_URL);
@@ -536,79 +539,80 @@ mongoClient.connect().then((client:MongoClient) => {
 
 
 // Robot Socket.io
-sioRobots.use(async(robotSocket:RobotSocket, next) => {
+sio_robots.use(async(robot_socket:RobotSocket, next) => {
 
     //err.data = { content: "Please retry later" }; // additional details
-    let idRobot = robotSocket.handshake.auth.id_robot;
+    let id_robot = robot_socket.handshake.auth.id_robot;
 
-    if (!ObjectId.isValid(idRobot)) {
-        $d.err('Invalidid id_robot provided: '+idRobot)
+    if (!ObjectId.isValid(id_robot)) {
+        $d.err('Invalidid id_robot provided: ' + id_robot)
         const err = new Error("Access denied");
         return next(err);
     }
-    if (!robotSocket.handshake.auth.key) {
-        $d.err('Missin key from: '+idRobot)
+    if (!robot_socket.handshake.auth.key) {
+        $d.err('Missin key from: ' + id_robot)
         const err = new Error("Missing auth key");
         return next(err);
     }
 
-    let searchId = new ObjectId(idRobot);
-    const dbRobot = (await robotsCollection.findOne({_id: searchId }));
+    let search_id = new ObjectId(id_robot);
+    const db_robot = (await robots_collection.findOne({_id: search_id }));
 
-    if (dbRobot) {
-        bcrypt.compare(robotSocket.handshake.auth.key, dbRobot.key_hash, function(err:any, res:any) {
+    if (db_robot) {
+        bcrypt.compare(robot_socket.handshake.auth.key, db_robot.key_hash, function(err:any, res:any) {
             if (res) { //pass match => good
-                $d.l(('Robot '+idRobot+' connected from '+robotSocket.handshake.address).green);
-                robotSocket.dbData = dbRobot;
+                $d.l(('Robot #' + id_robot + ' connected from '+robot_socket.handshake.address).green);
+                robot_socket.db_data = db_robot;
                 return next();
 
             } else { //invalid key
-                $d.l(('Robot '+idRobot+' auth failed for '+robotSocket.handshake.address).red);
+                $d.l(('Robot #' + id_robot + ' auth failed for '+robot_socket.handshake.address).red);
                 const err = new Error("Access denied");
                 return next(err);
             }
         });
     } else { //robot not found
-        $d.l(('Robot '+idRobot+' not found in db for '+robotSocket.handshake.address).red);
+        $d.l(('Robot #' + id_robot + ' not found in db for '+robot_socket.handshake.address).red);
         const err = new Error("Access denied");
         return next(err);
     }
 });
 
-sioRobots.on('connect', async function(robotSocket : RobotSocket){
+sio_robots.on('connect', async function(robot_socket : RobotSocket){
 
     let robot:Robot = new Robot(
-        robotSocket.dbData._id,
-        robotSocket,
-        robotSocket.handshake.auth.name ? robotSocket.handshake.auth.name : (robotSocket.dbData.name ? robotSocket.dbData.name : 'Unnamed Robot'),
-        robotSocket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robotSocket.handshake.auth.maintainer_email,
-        robotSocket.handshake.auth.peer_limit,
-        robotSocket.handshake.auth.ros_distro,
-        robotSocket.handshake.auth.git_sha,
-        robotSocket.handshake.auth.git_tag,
-        robotSocket.handshake.auth.ui_custom_includes_js,
-        robotSocket.handshake.auth.ui_custom_includes_css
+        robot_socket.db_data._id,
+        robot_socket,
+        robot_socket.handshake.auth.name ? robot_socket.handshake.auth.name : (robot_socket.db_data.name ? robot_socket.db_data.name : 'Unnamed Robot'),
+        robot_socket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robot_socket.handshake.auth.maintainer_email,
+        robot_socket.handshake.auth.peer_limit,
+        robot_socket.handshake.auth.ros_distro,
+        robot_socket.handshake.auth.git_sha,
+        robot_socket.handshake.auth.git_tag,
+        robot_socket.handshake.auth.ui_custom_includes_js,
+        robot_socket.handshake.auth.ui_custom_includes_css,
+        VERBOSE_WEBRTC, VERBOSE_DEFS, VERBOSE_PEERS
     );
 
-    $d.log(('Ohi, robot ' + robot.name+' aka ' + robot.idRobot.toString() +' ['+robot.ros_distro+'] connected to Socket.io').cyan);
-    $d.log('Robot ' + robot.idRobot.toString() + ' UI peer limit is '+robot.peer_limit);
+    $d.log(('Ohi, ' + robot + ' aka '+ robot.name + ' ['+robot.ros_distro+'] connected to Socket.io').cyan);
+    $d.log(robot + ' peer limit is ' + robot.peer_limit);
     if (robot.ui_custom_includes_js.length)
-        $d.log('Robot ' + robot.idRobot.toString() + ' UI custom JS includes ', robot.ui_custom_includes_js);
+        $d.log(robot + ' custom UI JS includes ', robot.ui_custom_includes_js);
     if (robot.ui_custom_includes_css.length)
-        $d.log('Robot ' + robot.idRobot.toString() + ' UI custom CSS includes ', robot.ui_custom_includes_css);
+        $d.log(robot + ' custom UI CSS includes ', robot.ui_custom_includes_css);
 
-    let disconnectEvent:number = Robot.LOG_EVENT_DISCONNECT;
+    let disconnect_event:number = Robot.LOG_EVENT_DISCONNECT;
 
     // send email on maintainer_email or robot name change
-    if (robot.maintainer_email != robotSocket.dbData.maintainer_email || robot.name != robotSocket.dbData.name) {
+    if (robot.maintainer_email != robot_socket.db_data.maintainer_email || robot.name != robot_socket.db_data.name) {
         if (robot.maintainer_email) {
-            $d.log('Robot name or maintainer\'s e-mail of '+robot.idRobot.toString()+' changed, sending link...');
+            $d.log('Robot name or maintainer\'s e-mail of ' + robot + ' changed, sending link...');
             let subject = robot.name + ' on Phantom Bridge';
             let body = 'Hello,\n' +
                        '\n' +
                        'Your robot '+robot.name+' is available at:\n' +
                        '\n' +
-                       UI_ADDRESS_PREFIX + robot.idRobot.toString() + '\n' +
+                       UI_ADDRESS_PREFIX + robot.id.toString() + '\n' +
                        '\n' +
                        'Read the docs here: https://docs.phntm.io/bridge' + '\n' +
                        '\n' +
@@ -618,7 +622,7 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     }
 
     // robot first connected
-    if (!robotSocket.dbData.last_connected && GSQ) {
+    if (!robot_socket.db_data.last_connected && GSQ) {
         const response = await fetch('https://api.gosquared.com/tracking/v1/event?api_key='+GSQ.api_key+'&site_token='+GSQ.site_token, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json'},
@@ -626,12 +630,12 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
                 'event': {
                     'name': 'Robot activated (' + GetDomainName(PUBLIC_BRIDGE_ADDRESS) + ')',
                     'data': {
-                        'id_robot': robot.idRobot.toString()
+                        'id_robot': robot.id.toString()
                     }
                 },
                 'ip': robot.socket.handshake.address,
                 'page': {
-                    'url': UI_ADDRESS_PREFIX + '#' + robot.idRobot.toString()
+                    'url': UI_ADDRESS_PREFIX + '#' + robot.id.toString()
                 }
             })
         });
@@ -641,47 +645,50 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         }
     }
 
-    robot.updateDbLogConnect(robotsCollection, robotLogsCollection, PUBLIC_BRIDGE_ADDRESS);
+    robot.updateDbLogConnect(robots_collection, robot_logs_collection, PUBLIC_BRIDGE_ADDRESS);
 
-    robotSocket.emit('ice-servers', { servers: ICE_SERVERS, secret: robotSocket.dbData.ice_secret }); // push this before peer info
+    robot_socket.emit('ice-servers', { servers: ICE_SERVERS, secret: robot_socket.db_data.ice_secret }); // push this before peer info
 
-    robot.addToConnected(VERBOSE_WEBRTC, VERBOSE_DEFS); // sends update to subscribers and peers to the robot
+    robot.addToConnected(); // sends update to subscribers and peers to the robot
 
-    robotSocket.on('peer:update', async function(update_data:any, return_callback:any) {
+    robot_socket.on('peer:update', async function(update_data:any, return_callback:any) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
-        let id_app:ObjectId|null = update_data['id_app'] && ObjectId.isValid(update_data['id_app']) ? new ObjectId(update_data['id_app']) : null;
-        let id_instance:ObjectId|null = update_data['id_instance'] && ObjectId.isValid(update_data['id_instance']) ? new ObjectId(update_data['id_instance']) : null;
+        let id_app_type:ObjectId|null = update_data['id_app'] && ObjectId.isValid(update_data['id_app']) ? new ObjectId(update_data['id_app']) : null;
+        let id_app:ObjectId|null = update_data['id_instance'] && ObjectId.isValid(update_data['id_instance']) ? new ObjectId(update_data['id_instance']) : null;
         delete update_data['id_app']
         delete update_data['id_instance']
         update_data = robot.getStateData(update_data)
+        
+        let log_label = "Got peer:update from " + robot + " for peer app #"+id_app;
+        if (VERBOSE_PEERS) $d.l(log_label + ": ", update_data);
+        else $d.l(log_label);
 
-        $d.l("Got peer:update from "+robot.idRobot+" for peer "+id_app+"/"+id_instance+": ", update_data);
-        if (!id_app || !id_instance)
+        if (!id_app || !id_app_type)
             return;
         
-        let app = App.FindConnected(id_app, id_instance);
-        if (app && app.getRobotSubscription(robot.idRobot)) {
-            app.socket.emit('robot:update', update_data, (app_answer:any) => {
-                return_callback(app_answer);
+        let peer_app = PeerApp.FindConnected(id_app, id_app_type);
+        if (peer_app && peer_app.getRobotSubscription(robot.id)) {
+            peer_app.socket.emit('robot:update', update_data, (peer_app_answer:any) => {
+                return_callback(peer_app_answer);
             });
         } else {
-            return_callback({err:1, msg:'Peer not found'});
+            return_callback({err:1, msg:'Peer App not found'});
         }
     });
 
-    robotSocket.on('idls', async function(idls:any[]) {
+    robot_socket.on('idls', async function(idls:any[]) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
         let msg_types:string[] = Object.keys(idls);
         if (VERBOSE_DEFS)
-            $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types:', msg_types);
+            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types:', msg_types);
         else
-            $d.l('Got '+ msg_types.length+' idls from '+robot.idRobot+' for msg_types');
+            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types');
 
         robot.idls = idls;
 
@@ -690,77 +697,77 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
         });
     });
 
-    robotSocket.on('nodes', async function(nodes:any) {
+    robot_socket.on('nodes', async function(nodes:any) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
         if (VERBOSE_NODES)
-            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot, nodes);
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot, nodes);
         else
-            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot.idRobot);
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot);
 
         robot.nodes = nodes;
         robot.nodesToSubscribers();
     });
 
-    robotSocket.on('topics', async function(topics:any[]) {
+    robot_socket.on('topics', async function(topics:any[]) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
         if (VERBOSE_TOPICS)
-            $d.l('Got '+topics.length+' topics from '+robot.idRobot, topics);
+            $d.l('Got '+topics.length+' topics from '+robot, topics);
         else
-            $d.l('Got '+topics.length+' topics from '+robot.idRobot);
+            $d.l('Got '+topics.length+' topics from '+robot);
 
         robot.topics = topics;
         robot.topicsToSubscribers();
     });
 
-    robotSocket.on('services', async function(services:any[]) {
+    robot_socket.on('services', async function(services:any[]) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
         
         if (VERBOSE_SERVICES)
-            $d.l('Got '+services.length+' services from '+robot.idRobot, services);
+            $d.l('Got '+services.length+' services from '+robot, services);
         else
-            $d.l('Got '+services.length+' services from '+robot.idRobot);
+            $d.l('Got '+services.length+' services from '+robot);
 
         robot.services = services;
         robot.servicesToSubscribers();
     });
 
-    robotSocket.on('cameras', async function(cameras:any[]) {
+    robot_socket.on('cameras', async function(cameras:any[]) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
-        $d.l('Got '+Object.keys(cameras).length+' cameras from '+robot.idRobot, cameras);
+        $d.l('Got '+Object.keys(cameras).length+' cameras from '+robot, cameras);
         robot.cameras = cameras;
         robot.camerasToSubscribers();
     });
 
-    robotSocket.on('docker', async function(docker_updates:any[]) {
+    robot_socket.on('docker', async function(docker_updates:any[]) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
         if (VERBOSE_DOCKER)
-            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot, docker_updates);
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot, docker_updates);
         else
-            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from #'+robot.idRobot);
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot);
         robot.docker_containers = docker_updates;
         robot.dockerContainersToSubscribers();
     });
 
-    robotSocket.on('introspection', async function(state:boolean) {
+    robot_socket.on('introspection', async function(state:boolean) {
 
-        if (!robot.isAuthentificated || !robot.isConnected)
+        if (!robot.is_authentificated || !robot.is_connected)
             return;
 
-        $d.l("Got introspection state from "+robot.idRobot+": "+state);
+        $d.l("Got introspection state from " + robot + ": " + state);
 
         robot.introspection = state;
 
@@ -770,95 +777,77 @@ sioRobots.on('connect', async function(robotSocket : RobotSocket){
     /*
      * client disconnected
      */
-    robotSocket.on('disconnect', (data:any) => {
+    robot_socket.on('disconnect', (data:any) => {
 
-        $d.l(('Socket disconnect for robot: '+data).red);
-        robot.isAuthentificated = false;
-        robot.isConnected = false;
+        $d.l(('Socket disconnect for ' + robot + ': '+data).red);
+        robot.is_authentificated = false;
+        robot.is_connected = false;
         robot.topics = [];
         robot.services = [];
-        robot.logDisconnect(robotsCollection, robotLogsCollection, disconnectEvent, () => {
-            // robot.socket = null;
-            robot.removeFromConnected(!shuttingDown);
+        robot.logDisconnect(robots_collection, robot_logs_collection, disconnect_event, () => {
+            robot.ip = null;
+            robot.removeFromConnected(!shutting_down);
         });
     });
 
-    robotSocket.on('disconnecting', (reason:any) => {
-        $d.l(('Disconnecting socket for robot: '+reason).gray);
-        disconnectEvent = Robot.LOG_EVENT_ERR;
+    robot_socket.on('disconnecting', (reason:any) => {
+        $d.l(('Disconnecting socket for ' + robot + ': '+reason).gray);
+        disconnect_event = Robot.LOG_EVENT_ERR;
         // robot.logDisconnect(robotsCollection, robotLogsCollection, Robot.LOG_EVENT_ERR);
     });
 
 });
 
-// App Socket.io
-sioApps.use(async (appSocket:AppSocket, next) => {
+// Peer App Socket.io
+sio_peer_apps.use(async (peer_app_socket:PeerAppSocket, next) => {
 
     //err.data = { content: "Please retry later" }; // additional details
-    let idApp = appSocket.handshake.auth.id_app;
-    let appKey = appSocket.handshake.auth.key;
+    let id_app = peer_app_socket.handshake.auth.id_app;
+    let app_key = peer_app_socket.handshake.auth.key;
 
-    if (!ObjectId.isValid(idApp)) {
-        $d.err('Invalidid id_app provided: '+idApp)
+    if (!ObjectId.isValid(id_app)) {
+        $d.err('Invalidid id_app provided: '+id_app)
         const err = new Error("Access denied");
         return next(err);
     }
 
+    let search_id = new ObjectId(id_app);
+    const db_app = (await apps_collection.findOne({_id: search_id }));
+
+    if (!db_app) { // app not found
+        $d.l(('App id '+id_app+' not found in db for '+peer_app_socket.handshake.address).red);
+        const err = new Error("Access denied");
+        return next(err);
+    }
+
+    let app_name = db_app.name;
+    peer_app_socket.handshake.auth.name = app_name;
     // TODO: users will be authenticated here, not apps
-    // if (!appKey) {
-    //     $d.err('Missin key from: '+idApp)
-    //     const err = new Error("Missing auth key");
-    //     return next(err);
-    // }
 
-    let searchId = new ObjectId(idApp);
-    const dbApp = (await appsCollection.findOne({_id: searchId }));
-
-    if (dbApp) {
-        let appName = dbApp.name;
-        appSocket.handshake.auth.name = appName;
-        // TODO: users will be authenticated here, not apps
-
-        // bcrypt.compare(appKey, dbApp.key_hash, function(err:any, res:any) {
-            // if (res) { //pass match => good
-                $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] connected from '+appSocket.handshake.address).green);
-                appSocket.dbData = dbApp;
-                return next();
-
-            // } else { //invalid key
-                // $d.l(((appName ? appName : 'Unnamed App')+' ['+idApp+'] auth failed for '+appSocket.handshake.address).red);
-                // const err = new Error("Access denied");
-                // return next(err);
-            // }
-        // });
-
-    } else { //app not found
-        $d.l(('App id '+idApp+' not found in db for '+appSocket.handshake.address).red);
-        const err = new Error("Access denied");
-        return next(err);
-    }
+    $d.l(((app_name ? app_name : 'Unnamed App')+' ['+id_app+'] connected from '+peer_app_socket.handshake.address).green);
+    peer_app_socket.db_data = db_app;
+    return next();
 });
 
-sioApps.on('connect', async function(appSocket : AppSocket){
+sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
-    $d.log('Connected w id_instance: ', appSocket.handshake.auth.id_instance);
+    //$d.log('Connected w id_instance: ', peer_app_socket.handshake.auth.id_instance);
 
-    let app:App = new App(
-        appSocket.handshake.auth.id_app,
-        appSocket.handshake.auth.id_instance,
-        appSocket.dbData.name,
-        appSocket
+    let peer_app:PeerApp = new PeerApp(
+        peer_app_socket.handshake.auth.id_instance,
+        peer_app_socket.handshake.auth.id_app,
+        peer_app_socket.db_data.name,
+        peer_app_socket
     ); //id instance generated in constructor, if not provided
-    
   
-    $d.log(('Ohi, app '+app.name+' aka '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') connected to Socket.io').cyan);
+    $d.log(('Ohi, ' + peer_app + ' (' + peer_app.name + ') connected to Socket.io (received id_instance=' + peer_app_socket.handshake.auth.id_instance + ')').cyan);
 
-    app.addToConnected();
+    peer_app.addToConnected();
 
-    appSocket.emit('instance', app.idInstance.toString());
+    peer_app_socket.emit('instance', peer_app.id.toString());
 
-    appSocket.on('robot', async function (data:{id_robot:string, read?:string[], write?:string[][]}, returnCallback) {
-        $d.log('Peer app requesting robot: ', data);
+    peer_app_socket.on('robot', async function (data:{id_robot:string, read?:string[], write?:string[][]}, returnCallback) {
+        $d.log(peer_app+' requesting robot ', VERBOSE_PEERS ? data : '#' + data.id_robot);
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
             if (returnCallback) {
@@ -871,34 +860,41 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
         let id_robot = new ObjectId(data.id_robot);
         let robot = Robot.FindConnected(id_robot);
-        if (!robot) {
-            // robot not connected, check it exists and return basic info
-            // TODO perhaps make this behavior optional?
-            const dbRobot = (await robotsCollection.findOne({_id: id_robot }));
-            if (!dbRobot) {
+        if (!robot) { // robot not connected, check it exists and return basic info
+            
+            const db_robot = (await robots_collection.findOne({_id: id_robot }));
+            if (!db_robot) {
                 return returnCallback({'err':1, 'msg': 'Robot not found here (did you register it first?)'}); //invalid id
             }
 
-            app.subscribeRobot(id_robot, data.read ? data.read : [], data.write ? data.write : []);
+            peer_app.subscribeRobot(id_robot, data.read ? data.read : [], data.write ? data.write : []);
 
             return returnCallback({
                 id_robot: id_robot.toString(),
-                name: dbRobot['name'] ? dbRobot['name'] : 'Unnamed Robot'
+                name: db_robot['name'] ? db_robot['name'] : 'Unnamed Robot'
             });
         }
 
-        app.subscribeRobot(robot.idRobot, data.read ? data.read : [], data.write ? data.write : []);
+        let sub = peer_app.subscribeRobot(robot.id, data.read ? data.read : [], data.write ? data.write : []);
         //if (true) // TODO: check max peer number
-            robot.initPeer(app, data.read ? data.read : [], data.write ? data.write : [], VERBOSE_WEBRTC, VERBOSE_DEFS, returnCallback);
-        //else
-        //    robot.peersToToSubscribers();
+        if (!robot.peer_limit || Object.keys(robot.connected_peers).length < robot.peer_limit) {
+            if (!robot.connected_peers[peer_app.id.toString()])
+                robot.connected_peers[peer_app.id.toString()] = peer_app;
+            $d.l('Initializing '+peer_app);
+            robot.initPeer(peer_app, sub, returnCallback);
+        } else {
+            if (robot.waiting_peers.indexOf(peer_app) === -1)
+                robot.waiting_peers.push(peer_app);
+            $d.l('Queuing '+peer_app);
+            robot.updateWaitingPeers(peer_app, returnCallback);
+        }
     });
 
-    function ProcessForwardRequest(app:App, data:{ id_robot?:string, id_app?:string, id_instance?:string}, returnCallback:any):Robot|boolean {
+    function ProcessForwardRequest(peer_app:PeerApp, data:{id_robot?:string, id_app?:string, id_instance?:string}, return_callback:any) : Robot|boolean {
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid robot id '+data.id_robot
                 })
@@ -908,8 +904,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         let id_robot = new ObjectId(data.id_robot);
         let robot = Robot.FindConnected(id_robot);
         if (!robot) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Robot not connected'
                 })
@@ -918,35 +914,35 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         delete data['id_robot'];
-        data['id_app'] = app.idApp.toString();
-        data['id_instance'] = app.idInstance.toString();
-
+        data['id_instance'] = peer_app.id.toString();
+        data['id_app'] = peer_app.id_type.toString();
+        
         return robot;
     }
 
-    appSocket.on('introspection', async function (data:{id_robot:string, state:boolean}, returnCallback) {
-        $d.log('App requesting robot introspection', data);
+    peer_app_socket.on('introspection', async function (data:{id_robot:string, state:boolean}, return_callback) {
+        $d.log(peer_app + ' requesting robot introspection', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         robot.socket.emit('introspection', data, (answerData:any) => {
             $d.log('Got robot\'s introspection answer:', answerData);
-            return returnCallback(answerData);
+            return return_callback(answerData);
         });
     });
 
-    appSocket.on('subscribe', async function (data:{ id_robot:string, sources:string[]}, returnCallback) {
-        $d.log('App subscribing to:', data);
+    peer_app_socket.on('subscribe', async function (data:{ id_robot:string, sources:string[]}, return_callback) {
+        $d.log(peer_app + ' subscribing to:', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         if (!data.sources) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid subscription sources'
                 })
@@ -954,27 +950,27 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.addToRobotSubscriptions(robot.idRobot, data.sources, null)
+        peer_app.addToRobotSubscriptions(robot.id, data.sources, null)
 
         robot.socket.emit('subscribe', data, (resData:any) => {
 
             $d.log('Got robot\'s subscription answer:', resData);
 
-            return returnCallback(resData);
+            return return_callback(resData);
         });
     });
 
-    appSocket.on('subscribe:write', async function (data:{ id_robot:string, sources:any[]}, returnCallback) {
+    peer_app_socket.on('subscribe:write', async function (data:{ id_robot:string, sources:any[]}, return_callback) {
 
-        $d.log('App requesting write subscription to:', data);
+        $d.log(peer_app + ' requesting write subscription to:', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         if (!data.sources) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid write subscription data'
                 })
@@ -982,23 +978,23 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.addToRobotSubscriptions(robot.idRobot, null, data.sources)
+        peer_app.addToRobotSubscriptions(robot.id, null, data.sources)
 
         robot.socket.emit('subscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s write subscription answer:', resData);
 
-            return returnCallback(resData);
+            return return_callback(resData);
         });
 
     });
 
-    appSocket.on('unsubscribe', async function (data:{ id_robot:string, sources:string[]}, returnCallback) {
-        $d.log('App unsubscribing from:', data);
+    peer_app_socket.on('unsubscribe', async function (data:{ id_robot:string, sources:string[]}, return_callback) {
+        $d.log(peer_app + ' unsubscribing from:', data);
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid robot id '+data.id_robot
                 })
@@ -1009,8 +1005,8 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         let id_robot = new ObjectId(data.id_robot);
 
         if (!data.sources) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid subscription sources'
                 })
@@ -1019,9 +1015,9 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         }
 
         // remove local subs even if robot is not connected
-        app.removeFromRobotSubscriptions(id_robot, data.sources, null);
+        peer_app.removeFromRobotSubscriptions(id_robot, data.sources, null);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
         
@@ -1029,20 +1025,20 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
             $d.log('Got robot\'s unsubscription answer:', resData);
 
-            return returnCallback(resData);
+            return return_callback(resData);
         });
     });
 
-    appSocket.on('unsubscribe:write', async function (data:{ id_robot:string, sources:string[]}, returnCallback) {
-        $d.log('App unsubscribing from:', data);
+    peer_app_socket.on('unsubscribe:write', async function (data:{ id_robot:string, sources:string[]}, return_callback) {
+        $d.log(peer_app + 'unsubscribing from:', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         if (!data.sources) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid unsubscription sources'
                 })
@@ -1050,30 +1046,30 @@ sioApps.on('connect', async function(appSocket : AppSocket){
             return;
         }
 
-        app.removeFromRobotSubscriptions(robot.idRobot, null, data.sources);
+        peer_app.removeFromRobotSubscriptions(robot.id, null, data.sources);
 
         robot.socket.emit('unsubscribe:write', data, (resData:any) => {
 
             $d.log('Got robot\'s unsubscription answer:', resData);
 
-            return returnCallback(resData);
+            return return_callback(resData);
         });
     });
 
-    appSocket.on('sdp:answer', async function (data:{ id_robot:string, sdp:string}, returnCallback) {
+    peer_app_socket.on('sdp:answer', async function (data:{ id_robot:string, sdp:string}, return_callback) {
 
         if (VERBOSE_WEBRTC)
-            $d.log('App sending sdp answer with:', data);
+            $d.log(peer_app + ' sending sdp answer with:', data);
         else
-            $d.log('App sending sdp answer');
+            $d.log(peer_app + ' sending sdp answer');
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         if (!data.sdp) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid subscription data'
                 })
@@ -1085,22 +1081,23 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
             $d.log('Got robot\'s sdp:answer answer:', resData);
 
-            return returnCallback(resData);
+            return return_callback(resData);
         });
     });
 
 
-    appSocket.on('service', async function (data:{ id_robot:string, service:string, msg:any}, returnCallback) {
+    peer_app_socket.on('service', async function (data:{ id_robot:string, service:string, msg:any}, return_callback) {
 
-        $d.log('App calling robot service:', data);
+        if (VERBOSE_SERVICES)
+            $d.log(peer_app + ' calling robot service:', data);
 
-        let robot:Robot = ProcessForwardRequest(app, data, returnCallback) as Robot;
+        let robot:Robot = ProcessForwardRequest(peer_app, data, return_callback) as Robot;
         if (!robot)
             return;
 
         if (!data.service) {
-            if (returnCallback) {
-                returnCallback({
+            if (return_callback) {
+                return_callback({
                     'err': 1,
                     'msg': 'Invalid service call data'
                 })
@@ -1110,23 +1107,24 @@ sioApps.on('connect', async function(appSocket : AppSocket){
 
         robot.socket.emit('service', data, (resData:any) => {
 
-            $d.log('Got robot\'s service call answer:', resData);
+            if (VERBOSE_SERVICES)
+                $d.log('Got robot\'s service call answer:', resData);
 
-            if (returnCallback)
-                return returnCallback(resData);
+            if (return_callback)
+                return return_callback(resData);
         });
 
-        robot.broadcastPeerServiceCall(app, data.service, data.msg);
+        robot.broadcastPeerServiceCall(peer_app, data.service, data.msg);
     });
 
-    appSocket.on('wrtc-info', async function (data:{ id_robot:string, state: string, method?:string, ip?:string}) {
+    peer_app_socket.on('wrtc-info', async function (data:{ id_robot:string, state: string, method?:string, ip?:string}) {
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot))
             return false;
         
         let id_robot = new ObjectId(data.id_robot);
         
-        let sub = app.getRobotSubscription(id_robot);
+        let sub = peer_app.getRobotSubscription(id_robot);
         if (!sub)
             return false;
         
@@ -1134,14 +1132,15 @@ sioApps.on('connect', async function(appSocket : AppSocket){
         sub.wrtc_connection_method = data.method;
         sub.wrtc_connection_ip = data.ip;
 
-        $d.log('Got app '+app.idApp.toString()+' (inst '+app.idInstance.toString()+') robot connection info:', data);
+        if (VERBOSE_WEBRTC)
+            $d.log('Got ' + peer_app + ' robot connection info:', data);
 
         // pass back to the robot to handle failures
         let robot = Robot.FindConnected(id_robot);
         if (robot) {
             robot.socket.emit('peer:wrtc-info', {
-                id_app: app.idApp.toString(),
-                id_instance: app.idInstance.toString(),
+                id_instance: peer_app.id.toString(),
+                id_app: peer_app.id_type.toString(),
                 state: sub.wrtc_connection_state,
             });
         }
@@ -1152,32 +1151,45 @@ sioApps.on('connect', async function(appSocket : AppSocket){
     /*
      * client disconnected
      */
-    appSocket.on('disconnect', (msg:any) => {
+    peer_app_socket.on('disconnect', (msg:any) => {
 
-        $d.l(('Socket disconnected for app '+app.idApp.toString()+' (inst '+app.idInstance.toString()+'): '+msg).red);
+        $d.l(('Socket disconnected for '+ peer_app +': ' + msg).red);
 
-        app.isAuthentificated = false;
-        app.isConnected = false;
-        // app.socket = null;
-        app.removeFromConnected();
+        peer_app.is_authentificated = false;
+        peer_app.is_connected = false;
+        peer_app.removeFromConnected();
 
-        for (let i = 0; i < app.robotSubscriptions.length; i++) {
-            let id_robot = app.robotSubscriptions[i].id_robot;
+        for (let i = 0; i < peer_app.robot_subscriptions.length; i++) {
+            let id_robot = peer_app.robot_subscriptions[i].id_robot;
             let robot = Robot.FindConnected(id_robot);
-            if (robot) {
-                robot.socket.emit('peer:disconnected', {
-                    id_app: app.idApp.toString(),
-                    id_instance: app.idInstance.toString()
-                });
+            if (!robot)
+                continue;
+
+            robot.socket.emit('peer:disconnected', {
+                id_app: peer_app.id_type.toString(),
+                id_instance: peer_app.id.toString()
+            });
+            
+            let was_connected = robot.connected_peers[peer_app.id.toString()] ? true : false;
+            if (was_connected)  {
+                $d.l('Removing ' + peer_app + ' from connected');
+                delete robot.connected_peers[peer_app.id.toString()];
             }
-            if (robot) {
-                robot.peersToToSubscribers();
+
+            let waiting_pos = robot.waiting_peers.indexOf(peer_app);
+            if (waiting_pos > -1) {
+                $d.l('Removing ' + peer_app + ' from waiting');
+                robot.waiting_peers.splice(waiting_pos, 1);
             }
+            if (was_connected)
+                robot.connectWaitingPeer();
+            robot.updateWaitingPeers();
+            robot.peersToToSubscribers();
         }
     });
 
-    appSocket.on('disconnecting', (reason:any) => {
-        $d.l(('Socket disconnecting from app: '+reason).gray);
+    peer_app_socket.on('disconnecting', (reason:any) => {
+        $d.l(('Socket disconnecting from ' + peer_app + ': '+reason).gray);
     });
 });
 
@@ -1196,21 +1208,21 @@ process.on('uncaughtException', (err:any) => {
     ShutdownWhenClear();
 }));
 
-let shuttingDown:boolean = false;
+let shutting_down:boolean = false;
 function _Clear() {
-    if (shuttingDown) return;
-    shuttingDown = true;
+    if (shutting_down) return;
+    shutting_down = true;
 
     $d.log("Server exiting, cleaning up...");
 
-    sioRobots.close();
+    sio_robots.close();
     // sioHumans.close();
-    sioApps.close();
+    sio_peer_apps.close();
 }
 
 function ShutdownWhenClear():void {
-    if (Robot.connectedRobots.length) {
-        $d.l('Waiting for '+Robot.connectedRobots.length+' robots to clear...');
+    if (Robot.connected_robots.length) {
+        $d.l('Waiting for '+Robot.connected_robots.length+' robots to clear...');
         setTimeout(() => ShutdownWhenClear(), 1000);
         return;
     }
