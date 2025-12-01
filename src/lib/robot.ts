@@ -49,9 +49,12 @@ export class Robot {
     docker_containers: any = {}; // docker status as host => DockerStatusMsg
     cameras: any[];
 
+    input_topic_locks: { [topic:string]: string } = {};
+
     verbose_webrtc:boolean; 
     verbose_defs:boolean;
     verbose_peers:boolean;
+    verbose_input_locks: boolean;
 
     static LOG_EVENT_CONNECT: number = 1;
     static LOG_EVENT_DISCONNECT: number = 0;
@@ -64,7 +67,7 @@ export class Robot {
     public constructor(id_robot:ObjectId, robot_socket:RobotSocket, name:string, maintainer_email:string,
                        peer_limit:number, ros_distro:string, git_sha:string, git_tag:string,
                        custom_includes_js:string[], custom_includes_css:string[],
-                       verbose_webrtc:boolean, verbose_defs:boolean, verbose_peers:boolean
+                       verbose_webrtc:boolean, verbose_defs:boolean, verbose_peers:boolean, verbose_input_locks:boolean
                     ) {
         this.id = id_robot;
         this.socket = robot_socket;
@@ -91,6 +94,8 @@ export class Robot {
         this.verbose_webrtc = verbose_webrtc; 
         this.verbose_defs = verbose_defs;
         this.verbose_peers = verbose_peers;
+        this.verbose_input_locks = verbose_input_locks;
+        this.input_topic_locks = {};
     }
 
     toString() : string {
@@ -153,6 +158,7 @@ export class Robot {
 
             answerData = this.getStateData(answerData);
             answerData['files_fw_secret'] = peer_app.files_secret.toString();
+            answerData['input_locks'] = this.input_topic_locks;
 
             if (return_callback) {
                 return_callback(answerData);
@@ -394,7 +400,7 @@ export class Robot {
     }
 
     // broadcasts service call initiated by senderPeer to all other connected peers
-    public broadcastPeerServiceCall(sender_peer:PeerApp, service:string, msg:any):void {
+    public broadcastPeerServiceCall(sender_peer:PeerApp, service:string, msg:any) : void {
         PeerApp.connected_apps.forEach(peer_app => {
             if (peer_app == sender_peer)
                 return; //skip sender
@@ -406,6 +412,31 @@ export class Robot {
                 peer_app.socket.emit('peer_service_call', data);
             }
         });
+    }
+
+    public broadcastInputLocks() : void {
+        Object.values(this.connected_peers).forEach(peer_app => {
+            let data = this.labelSubsciberData({
+                'locked_topics': this.input_topic_locks
+            });
+            peer_app.socket.emit('input_locks', data);
+        });
+    }
+
+    public unlockInputByPeer(peer_app:PeerApp) : void {
+        let change = false;
+        Object.keys(this.input_topic_locks).forEach((topic) => {
+            if (this.input_topic_locks[topic] && this.input_topic_locks[topic] == peer_app.id.toString()) {
+                delete this.input_topic_locks[topic];
+                if (this.verbose_input_locks)
+                    $d.log(peer_app + ' unlocked input topic ' + topic);
+                change = true;
+            }
+        });
+
+        if (change) {
+            this.broadcastInputLocks();
+        }
     }
 
     public updateDbLogConnect(robots_collection:Collection, robot_logs_collection:Collection, public_bridge_address:string):void {

@@ -52,6 +52,7 @@ const VERBOSE_TOPICS:boolean = CONFIG['BRIDGE'].verboseTopics;
 const VERBOSE_NODES:boolean = CONFIG['BRIDGE'].verboseNodes;
 const VERBOSE_DOCKER:boolean = CONFIG['BRIDGE'].verboseDocker;
 const VERBOSE_PEERS:boolean = CONFIG['BRIDGE'].verbosePeers;
+const VERBOSE_INPUT_LOCKS:boolean = CONFIG['BRIDGE'].verboseInputLocks;
 
 const DB_URL:string = CONFIG.dbUrl;
 const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
@@ -591,7 +592,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         robot_socket.handshake.auth.git_tag,
         robot_socket.handshake.auth.ui_custom_includes_js,
         robot_socket.handshake.auth.ui_custom_includes_css,
-        VERBOSE_WEBRTC, VERBOSE_DEFS, VERBOSE_PEERS
+        VERBOSE_WEBRTC, VERBOSE_DEFS, VERBOSE_PEERS, VERBOSE_INPUT_LOCKS
     );
 
     $d.log(('Ohi, ' + robot + ' aka '+ robot.name + ' ['+robot.ros_distro+'] connected to Socket.io').cyan);
@@ -1117,6 +1118,72 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
         robot.broadcastPeerServiceCall(peer_app, data.service, data.msg);
     });
 
+    function ProcessInputLockrequest(id_robot:string, topic:string, lock_state:boolean, return_callback?:any) {
+        if (!id_robot || !ObjectId.isValid(id_robot)) {
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Invalid robot id '+id_robot
+                })
+            }
+            return false;
+        }
+        let robot = Robot.FindConnected(new ObjectId(id_robot));
+        if (!robot || !robot.connected_peers[peer_app.id.toString()]) {
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Robot not connected'
+                })
+            }
+            return false;
+        }
+
+        if (!topic) {
+             if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Topic not specified'
+                })
+            }
+            return false;
+        }
+
+        if (lock_state && robot.input_topic_locks[topic] && robot.input_topic_locks[topic] != peer_app.id.toString()) {
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Topic locked by someone else'
+                })
+            }
+            return false;
+        }
+
+        if (VERBOSE_INPUT_LOCKS)
+            $d.log(peer_app + (lock_state ? ' locking ' : ' unlocking ') + robot + ' input topic: ' + topic);
+
+        if (lock_state) { //lock
+            robot.input_topic_locks[topic] = peer_app.id.toString();
+        } else { // unlock
+            if (robot.input_topic_locks[topic] && robot.input_topic_locks[topic] == peer_app.id.toString())
+                delete robot.input_topic_locks[topic];
+        }
+        
+        if (return_callback) {
+            return_callback({ 'success': true });
+        }
+
+        robot.broadcastInputLocks();
+    }
+
+    peer_app_socket.on('input:lock', async function (data:{ id_robot:string, topic:string}, return_callback) {
+        return ProcessInputLockrequest(data.id_robot, data.topic, true, return_callback);
+    });
+
+    peer_app_socket.on('input:unlock', async function (data:{ id_robot:string, topic:string}) {
+        return ProcessInputLockrequest(data.id_robot, data.topic, false);
+    });
+
     peer_app_socket.on('wrtc-info', async function (data:{ id_robot:string, state: string, method?:string, ip?:string}) {
 
         if (!data.id_robot || !ObjectId.isValid(data.id_robot))
@@ -1185,6 +1252,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                 robot.connectWaitingPeer();
             robot.updateWaitingPeers();
             robot.peersToToSubscribers();
+
+            robot.unlockInputByPeer(peer_app);
         }
     });
 
