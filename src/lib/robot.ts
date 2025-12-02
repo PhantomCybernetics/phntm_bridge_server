@@ -35,6 +35,8 @@ export class Robot {
     waiting_peers: PeerApp[];
     ui_custom_includes_js: string[];
     ui_custom_includes_css: string[];
+    ui_background_disconnect_sec: number;
+
     // type: ObjectId;
     is_connected: boolean;
     is_authentificated: boolean;
@@ -66,7 +68,7 @@ export class Robot {
 
     public constructor(id_robot:ObjectId, robot_socket:RobotSocket, name:string, maintainer_email:string,
                        peer_limit:number, ros_distro:string, git_sha:string, git_tag:string,
-                       custom_includes_js:string[], custom_includes_css:string[],
+                       custom_includes_js:string[], custom_includes_css:string[], ui_background_disconnect_sec:number,
                        verbose_webrtc:boolean, verbose_defs:boolean, verbose_peers:boolean, verbose_input_locks:boolean
                     ) {
         this.id = id_robot;
@@ -82,6 +84,7 @@ export class Robot {
         this.git_tag = git_tag ? git_tag : '';
         this.ui_custom_includes_js = custom_includes_js ? custom_includes_js : [];
         this.ui_custom_includes_css = custom_includes_css ? custom_includes_css : [];
+        this.ui_background_disconnect_sec = ui_background_disconnect_sec ? ui_background_disconnect_sec : 0.0;
         this.is_authentificated = true;
         this.is_connected = true;
         this.topics = [];
@@ -453,6 +456,7 @@ export class Robot {
                                         last_ip: this.socket.handshake.address,
                                         ui_custom_includes_css: this.ui_custom_includes_css,
                                         ui_custom_includes_js: this.ui_custom_includes_js,
+                                        ui_background_disconnect_sec: this.ui_background_disconnect_sec
                                     }, $inc: { total_sessions: 1 } });
 
         robot_logs_collection.insertOne({

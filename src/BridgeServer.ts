@@ -490,6 +490,7 @@ register_express.post('/locate', async function(req:express.Request, res:express
                 'bridge_server': dbRobot['bridge_server'],
                 'ui_custom_css': dbRobot['ui_custom_includes_css'],
                 'ui_custom_js': dbRobot['ui_custom_includes_js'],
+                'ui_background_disconnect_sec': dbRobot['ui_background_disconnect_sec']
             }, null, 4));
 
         } else { // invalid app key
@@ -592,6 +593,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         robot_socket.handshake.auth.git_tag,
         robot_socket.handshake.auth.ui_custom_includes_js,
         robot_socket.handshake.auth.ui_custom_includes_css,
+        robot_socket.handshake.auth.ui_background_disconnect_sec,
         VERBOSE_WEBRTC, VERBOSE_DEFS, VERBOSE_PEERS, VERBOSE_INPUT_LOCKS
     );
 
