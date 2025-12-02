@@ -360,16 +360,16 @@ bridge_express.get('/info', function(req: any, res: any) {
     res.setHeader('Content-Type', 'application/json');
 
     let info_data:any = {
-        time: new Date(),
-        numConnectedRobots: Robot.connected_robots.length,
-        numConnectedApps: PeerApp.connected_apps.length,
-        robots: [],
-        apps: [],
+        'time': new Date(),
+        'numConnectedRobots': Robot.connected_robots.length,
+        'numConnectedApps': PeerApp.connected_apps.length,
+        'robots': [],
+        'peer_apps': [],
     };
 
     let peers_subscribed_to_robot:any = {}
 
-    let appsData = [];
+    let peerAppsData = [];
     for (let i = 0; i < PeerApp.connected_apps.length; i++) {
         let id_app_type:string = PeerApp.connected_apps[i].id_type.toString();
         let id_app:string = PeerApp.connected_apps[i].id.toString();
@@ -392,7 +392,7 @@ bridge_express.get('/info', function(req: any, res: any) {
             }
         }
 
-        appsData.push({
+        peerAppsData.push({
             'id': id_app,
             'name': PeerApp.connected_apps[i].name ? PeerApp.connected_apps[i].name : 'Unnamed App',
             'type': id_app_type,
@@ -410,6 +410,7 @@ bridge_express.get('/info', function(req: any, res: any) {
             'name': Robot.connected_robots[i].name ? Robot.connected_robots[i].name : 'Unnamed Robot',
             'maintainer_email': Robot.connected_robots[i].maintainer_email,
             'ros_distro': Robot.connected_robots[i].ros_distro,
+            'rmw_implementation': Robot.connected_robots[i].rmw_implementation,
             'git_sha': Robot.connected_robots[i].git_sha,
             'git_tag': Robot.connected_robots[i].git_tag,
             'ui': ui_url,
@@ -419,7 +420,7 @@ bridge_express.get('/info', function(req: any, res: any) {
     }
 
     info_data['robots'] = robotsData;
-    info_data['apps'] = appsData;
+    info_data['peer_apps'] = peerAppsData;
 
     res.send(JSON.stringify(info_data, null, 4));
 });
@@ -589,6 +590,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         robot_socket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robot_socket.handshake.auth.maintainer_email,
         robot_socket.handshake.auth.peer_limit,
         robot_socket.handshake.auth.ros_distro,
+        robot_socket.handshake.auth.rmw_implementation,
         robot_socket.handshake.auth.git_sha,
         robot_socket.handshake.auth.git_tag,
         robot_socket.handshake.auth.ui_custom_includes_js,

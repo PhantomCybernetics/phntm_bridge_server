@@ -28,6 +28,7 @@ export class Robot {
     ip:string | null;
 
     ros_distro: string;
+    rmw_implementation:string;
     git_sha: string;
     git_tag: string;
     peer_limit: number;
@@ -67,7 +68,7 @@ export class Robot {
     static connected_robots:Robot[] = [];
 
     public constructor(id_robot:ObjectId, robot_socket:RobotSocket, name:string, maintainer_email:string,
-                       peer_limit:number, ros_distro:string, git_sha:string, git_tag:string,
+                       peer_limit:number, ros_distro:string, rmw_implementation:string, git_sha:string, git_tag:string,
                        custom_includes_js:string[], custom_includes_css:string[], ui_background_disconnect_sec:number,
                        verbose_webrtc:boolean, verbose_defs:boolean, verbose_peers:boolean, verbose_input_locks:boolean
                     ) {
@@ -80,6 +81,7 @@ export class Robot {
         this.connected_peers = {};
         this.waiting_peers = [];
         this.ros_distro = ros_distro ? ros_distro : '';
+        this.rmw_implementation = rmw_implementation ? rmw_implementation : '';
         this.git_sha = git_sha ? git_sha : '';
         this.git_tag = git_tag ? git_tag : '';
         this.ui_custom_includes_js = custom_includes_js ? custom_includes_js : [];
@@ -254,6 +256,7 @@ export class Robot {
         data['name'] = this.name ? this.name : 'Unnamed Robot';
         data['maintainer_email'] = this.maintainer_email ? this.maintainer_email : '';
         data['ros_distro'] = this.ros_distro;
+        data['rmw_implementation'] = this.rmw_implementation;
         data['git_sha'] = this.git_sha;
         data['git_tag'] = this.git_tag;
 
@@ -450,6 +453,7 @@ export class Robot {
                                         maintainer_email: this.maintainer_email,
                                         bridge_server: public_bridge_address, // save current instance for /locate
                                         ros_distro: this.ros_distro,
+                                        rmw_implementation: this.rmw_implementation,
                                         git_sha: this.git_sha,
                                         git_tag: this.git_tag,
                                         last_connected: this.time_connected,
