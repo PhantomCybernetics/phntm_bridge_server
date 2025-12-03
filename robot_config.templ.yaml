@@ -5,7 +5,7 @@
 ## Robot UI is available at:
 ## %ROBOT_UI_ADDRESS%
 ##
-## See the full list of configuration options at https://docs.phntm.io/bridge/basics/bridge-config.html
+## See the full list of configuration options at https://docs.phntm.io/bridge/basics/configuration.html
 
 /**:
   ros__parameters:
@@ -52,7 +52,7 @@
     # blacklist_services: 
     #  - /phntm_agent/iw_scan
 
-    encoder_hw_device_default: 'sw' # 'cuda' for Nvidia, 'vaapi' for AMD or 'sw' for CPU
+    encoder_hw_device_default: 'sw' # 'cuda' for Nvidia, 'vaapi' for AMD or Intel, 'sw' for CPU
 
     ## Custom topic configs
     /rosout:
