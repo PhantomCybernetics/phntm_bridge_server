@@ -59,6 +59,7 @@
       reliability: RELIABLE
       durability: TRANSIENT_LOCAL
       lifespan_sec: -1.0 # infinity
+      history_depth: 20
     /robot_description:
       reliability: RELIABLE
       durability: TRANSIENT_LOCAL
