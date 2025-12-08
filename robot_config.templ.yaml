@@ -5,7 +5,7 @@
 ## Robot UI is available at:
 ## %ROBOT_UI_ADDRESS%
 ##
-## See the full list of configuration options at https://docs.phntm.io/bridge/basics/configuration.html
+## See the full list of configuration options at https://docs.phntm.io/bridge/basics/configuration
 
 /**:
   ros__parameters:
@@ -14,7 +14,7 @@
     name: 'Unnamed Robot'
     maintainer_email: '%MAINTAINER_EMAIL%' # e-mail for service announcements
     
-    bridge_server_address: %CLOUD_BRIDGE_ADDRESS% # Cloud Bridge to connect to, see https://docs.phntm.io/bridge/availability-zones.html
+    bridge_server_address: %CLOUD_BRIDGE_ADDRESS% # Cloud Bridge to connect to, see https://docs.phntm.io/bridge/availability-zones
 
     log_sdp: True # verbose WebRTC debug
 
