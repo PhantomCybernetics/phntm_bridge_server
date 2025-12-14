@@ -36,8 +36,8 @@ export class PeerApp {
 
     static connected_apps:PeerApp[] = [];
 
-    constructor(id_peer_app_instance:string, id_type:string, name:string, app_socket:PeerAppSocket) {
-        this.id = new ObjectId(id_peer_app_instance)
+    constructor(id_type:string, name:string, app_socket:PeerAppSocket) {
+        this.id = new ObjectId()
         this.name = name;
         this.socket = app_socket;
         //generates new instance id if undefined

@@ -5,7 +5,8 @@
 ## Robot UI is available at:
 ## %ROBOT_UI_ADDRESS%
 ##
-## See the full list of configuration options at https://docs.phntm.io/bridge/basics/configuration
+## See the full list of configuration options at:
+## https://docs.phntm.io/bridge/basics/configuration
 
 /**:
   ros__parameters:

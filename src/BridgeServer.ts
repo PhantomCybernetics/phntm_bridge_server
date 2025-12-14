@@ -836,16 +836,13 @@ sio_peer_apps.use(async (peer_app_socket:PeerAppSocket, next) => {
 
 sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
-    //$d.log('Connected w id_instance: ', peer_app_socket.handshake.auth.id_instance);
-
     let peer_app:PeerApp = new PeerApp(
-        peer_app_socket.handshake.auth.id_instance,
         peer_app_socket.handshake.auth.id_app,
         peer_app_socket.db_data.name,
         peer_app_socket
-    ); //id instance generated in constructor, if not provided
+    ); // id instance generated here
   
-    $d.log(('Ohi, ' + peer_app + ' (' + peer_app.name + ') connected to Socket.io (received id_instance=' + peer_app_socket.handshake.auth.id_instance + ')').cyan);
+    $d.log(('Ohi, ' + peer_app + ' (' + peer_app.name + ') connected to Socket.io').cyan);
 
     peer_app.addToConnected();
 
