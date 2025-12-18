@@ -111,20 +111,24 @@ if (GS_API_KEY && GS_SITE_TOKEN) {
 }
 
 $d.log('Staring up...');
+const pad_width = 70;
 console.log('-----------------------------------------------------------------------'.yellow);
 console.log(' PHNTM BRIDGE SERVER'.yellow);
 console.log('');
-console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml               Register new robot (YAML/JSON)').green);
-console.log((' '+PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app                      Register new App (JSON)').green);
+console.log((' '+(PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/robot?yaml').padEnd(pad_width) + ' Register new robot (YAML/JSON)').green);
+console.log((' '+(PUBLIC_REGISTER_ADDRESS+':'+REGISTER_PORT+'/app').padEnd(pad_width) + ' Register new App (JSON)').green);
 console.log('');
-console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info                     System info').yellow);
-console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/         Robot API').cyan);
-console.log((' '+PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/app/socket.io/           App API').cyan);
+console.log((' '+(PUBLIC_BRIDGE_ADDRESS+':'+FILES_PORT).padEnd(pad_width) + ' Forwarding files').green);
+console.log('');
+console.log((' '+(PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/info').padEnd(pad_width) + ' System info').yellow);
+console.log((' '+(PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/robot/socket.io/').padEnd(pad_width) + ' Robot Scoket.io API').cyan);
+console.log((' '+(PUBLIC_BRIDGE_ADDRESS+':'+BRIDGE_SIO_PORT+'/app/socket.io/').padEnd(pad_width) + ' App Socket.io API').cyan);
 console.log('----------------------------------------------------------------------'.yellow);
-console.log(('Using register certs: ').green, { key: reg_cert_files[0], cert: reg_cert_files[1] });
-console.log(('Using bridge certs: ').green, { key: bridge_cert_files[0], cert: bridge_cert_files[1] });
-console.log('Using ICE servers: '.green, ICE_SERVERS);
-console.log(('Total unique ICE servers to sync with: '+ICE_SYNC_SERVERS.length).green);
+if (USE_HTTPS) {
+    console.log(('Using register certs: ').green, { key: reg_cert_files[0], cert: reg_cert_files[1] });
+    console.log(('Using bridge certs: ').green, { key: bridge_cert_files[0], cert: bridge_cert_files[1] });
+}
+console.log(('Using ICE servers ('+ICE_SYNC_SERVERS.length+' unique): ').green, ICE_SERVERS);
 console.log(('ICE sync port: '+ICE_SYNC_PORT).green);
 console.log('----------------------------------------------------------------------'.yellow);
 
@@ -667,11 +671,23 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         }
     }
 
+    function finishConnect():void {
+        robot_socket.emit('ice-servers', { servers: ICE_SERVERS, secret: robot_socket.db_data.ice_secret }); // push this before peer info
+        robot.addToConnected(); // sends update to subscribers and peers to the robot
+    }
+
+    // robot moved to another server, sync coturn creds
+    if (robot_socket.db_data.bridge_server != PUBLIC_BRIDGE_ADDRESS) {
+        $d.log(robot + ' moved from another Bridge Server; syncing ICE credentials');
+        Robot.SyncICECredentials(robot.id.toString(), robot_socket.db_data.ice_secret,
+                                 ICE_SYNC_SERVERS, ICE_SYNC_PORT, ICE_SYNC_SECRET, () => {
+                                   finishConnect();
+                                 });
+    } else {
+        finishConnect();
+    }
+
     robot.updateDbLogConnect(robots_collection, robot_logs_collection, PUBLIC_BRIDGE_ADDRESS);
-
-    robot_socket.emit('ice-servers', { servers: ICE_SERVERS, secret: robot_socket.db_data.ice_secret }); // push this before peer info
-
-    robot.addToConnected(); // sends update to subscribers and peers to the robot
 
     robot_socket.on('peer:update', async function(update_data:any, return_callback:any) {
 
