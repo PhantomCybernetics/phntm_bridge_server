@@ -14,11 +14,14 @@ const fs = require('fs-extra');
 const dir:string  = __dirname + "/..";
 const _ = require('lodash');
 const https = require('https');
+const http = require('http');
 
 import * as JSONC from 'comment-json';
 
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
+const USE_HTTPS:number = CONFIG['BRIDGE'].use_https;
+const PUBLIC_BRIDGE_ADDRESS:string = CONFIG['BRIDGE'].bridgeAddress; // this is not
 
 const FILES_CACHE_DIR:string = CONFIG['BRIDGE'].filesCacheDir;
 if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
@@ -27,18 +30,20 @@ if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
 };
 const UPLOAD_PORT:number = CONFIG['FILE_RECEIVER'].uploadPort;
 const INCOMING_TMP_DIR:string = CONFIG['FILE_RECEIVER'].incomingFilesTmpDir;
-const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
-const BRIDGE_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].bridgeSsl.public;
+const BRIDGE_SSL_CERT_PRIVATE = USE_HTTPS ? CONFIG['BRIDGE'].bridgeSsl.private : null;
+const BRIDGE_SSL_CERT_PUBLIC = USE_HTTPS ? CONFIG['BRIDGE'].bridgeSsl.public : null;
 const DB_URL:string = CONFIG.dbUrl;
 
-const bridgeCertFiles:string[] = GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC);
-const HTTPS_SERVER_OPTIONS = {
+const bridgeCertFiles:string[] = USE_HTTPS ? GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC) : [];
+const HTTPS_SERVER_OPTIONS = USE_HTTPS ? {
     key: fs.readFileSync(bridgeCertFiles[0]),
     cert: fs.readFileSync(bridgeCertFiles[1]),
-};
+} : null;
 
 const app = express();
-const httpServer = https.createServer(HTTPS_SERVER_OPTIONS, app);
+const httpServer = USE_HTTPS ?
+                   https.createServer(HTTPS_SERVER_OPTIONS, app) :
+                   http.createServer(app);
 const upload = multer({ dest: INCOMING_TMP_DIR });
 
 interface UploadedFile {
@@ -81,6 +86,10 @@ async function checkAuth (idRobot:string, authKey:string):Promise<void> {
 
 }
 
+app.get('/', async function(req:express.Request, res:express.Response) {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({'file_uploader': PUBLIC_BRIDGE_ADDRESS}, null, 4));
+});
 
 app.post('/upload', upload.single('file'), async (req:any, res:any) => {
   try {
@@ -110,6 +119,7 @@ app.post('/upload', upload.single('file'), async (req:any, res:any) => {
         res.json({ message: 'Chunk ok', partNumber });
       })
       .catch(()=>{
+        $d.log('['+idRobot+'] '+('Invalid credentials provided').red);
         res.status(403).json({ error: 'Invalid credentials provided' });
       });
     

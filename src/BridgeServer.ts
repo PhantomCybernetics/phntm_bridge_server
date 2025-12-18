@@ -13,6 +13,7 @@ const path = require('path');
 import * as C from 'colors'; C; //force import typings with string prototype extension
 const _ = require('lodash');
 const https = require('https');
+const http = require('http');
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId } from 'mongodb';
 import * as SocketIO from "socket.io";
 import * as express from "express";
@@ -31,6 +32,7 @@ if (!fs.existsSync(dir+'/config.jsonc')) {
 import * as JSONC from 'comment-json';
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
+const USE_HTTPS:number = CONFIG['BRIDGE'].use_https;
 const BRIDGE_SIO_PORT:number = CONFIG['BRIDGE'].bridgePort;
 const REGISTER_PORT:number = CONFIG['BRIDGE'].registerPort;
 const FILES_PORT:number = CONFIG['BRIDGE'].filesPort;
@@ -55,22 +57,22 @@ const VERBOSE_PEERS:boolean = CONFIG['BRIDGE'].verbosePeers;
 const VERBOSE_INPUT_LOCKS:boolean = CONFIG['BRIDGE'].verboseInputLocks;
 
 const DB_URL:string = CONFIG.dbUrl;
-const BRIDGE_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].bridgeSsl.private;
-const BRIDGE_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].bridgeSsl.public;
-const REGISTER_SSL_CERT_PRIVATE = CONFIG['BRIDGE'].registerSsl.private;
-const REGISTER_SSL_CERT_PUBLIC = CONFIG['BRIDGE'].registerSsl.public;
+const BRIDGE_SSL_CERT_PRIVATE = USE_HTTPS ? CONFIG['BRIDGE'].bridgeSsl.private : null;
+const BRIDGE_SSL_CERT_PUBLIC = USE_HTTPS ? CONFIG['BRIDGE'].bridgeSsl.public : null;
+const REGISTER_SSL_CERT_PRIVATE = USE_HTTPS ? CONFIG['BRIDGE'].registerSsl.private : null;
+const REGISTER_SSL_CERT_PUBLIC = USE_HTTPS ? CONFIG['BRIDGE'].registerSsl.public : null;
 const DIE_ON_EXCEPTION:boolean = CONFIG.dieOnException;
 
-const reg_cert_files:string[] = GetCerts(REGISTER_SSL_CERT_PRIVATE, REGISTER_SSL_CERT_PUBLIC);
-const REGISTER_HTTPS_SERVER_OPTIONS = {
+const reg_cert_files:string[] = USE_HTTPS ? GetCerts(REGISTER_SSL_CERT_PRIVATE, REGISTER_SSL_CERT_PUBLIC) : [];
+const REGISTER_HTTPS_SERVER_OPTIONS = USE_HTTPS ? {
     key: fs.readFileSync(reg_cert_files[0]),
     cert: fs.readFileSync(reg_cert_files[1]),
-};
-const bridge_cert_files:string[] = GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC);
-const BRIDGE_HTTPS_SERVER_OPTIONS = {
+} : null;
+const bridge_cert_files:string[] = USE_HTTPS ? GetCerts(BRIDGE_SSL_CERT_PRIVATE, BRIDGE_SSL_CERT_PUBLIC) : [];
+const BRIDGE_HTTPS_SERVER_OPTIONS = USE_HTTPS ? {
     key: fs.readFileSync(bridge_cert_files[0]),
     cert: fs.readFileSync(bridge_cert_files[1]),
-};
+} : null;
 
 const ADMIN_USERNAME:string = CONFIG['BRIDGE'].admin.username;
 const ADMIN_PASSWORD:string = CONFIG['BRIDGE'].admin.password;
@@ -133,13 +135,19 @@ let robot_logs_collection:Collection;
 let apps_collection:Collection;
 
 const register_express = express();
-const register_http_server = https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, register_express);
+const register_http_server = USE_HTTPS ?
+                             https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, register_express) :
+                             http.createServer(register_express);
 
 const bridge_express = express();
-const bridge_http_server = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridge_express);
+const bridge_http_server = USE_HTTPS ?
+                           https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridge_express) :
+                           http.createServer(bridge_express);
 
 const files_express = express();
-const files_http_server = https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, files_express);
+const files_http_server = USE_HTTPS ?
+                          https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, files_express) :
+                          http.createServer(files_express);
 
 process.on('uncaughtException', function(err) {
     $d.e('Caught unhandled exception: ', err);
@@ -150,6 +158,11 @@ files_express.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, PUT");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     next();
+});
+
+files_express.get('/', async function(req:express.Request, res:express.Response) {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({'file_forwarder': PUBLIC_BRIDGE_ADDRESS}, null, 4));
 });
 
 files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
@@ -196,7 +209,6 @@ files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Req
     try {
         await fs.promises.access(path_cache, fs.constants.R_OK);
         $d.l(path_cache+' found in cache');
-
         return res.sendFile(path_cache, {}, function (err) {
             try {
                 if (err) {
@@ -426,6 +438,11 @@ bridge_express.get('/info', function(req: any, res: any) {
 });
 
 register_express.use(express.json());
+
+register_express.get('/', async function(req:express.Request, res:express.Response) {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4));
+});
 
 // register a new robot, then forward to config
 register_express.get('/robot', async function(req:express.Request, res:express.Response) {

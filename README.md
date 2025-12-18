@@ -23,7 +23,7 @@ which Bridge Server instance is the robot registered on.
 ### Install Node.js
 Last tested v18.20.5
 ```bash
-sudo apt install nodejs
+sudo apt install npm nodejs
 ```
 
 ### Install MongoDB
@@ -60,6 +60,7 @@ Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
 
   "BRIDGE": {
       "registerAddress": "https://register.phntm.io", // this is geo balanced
+      "use_https": true,
       "registerPort": 443,
       "registerSsl": {
           "private": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",
