@@ -32,7 +32,7 @@ if (!fs.existsSync(dir+'/config.jsonc')) {
 import * as JSONC from 'comment-json';
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
-const USE_HTTPS:number = CONFIG['BRIDGE'].use_https;
+const USE_HTTPS:number = CONFIG['BRIDGE'].useHttps;
 const BRIDGE_SIO_PORT:number = CONFIG['BRIDGE'].bridgePort;
 const REGISTER_PORT:number = CONFIG['BRIDGE'].registerPort;
 const FILES_PORT:number = CONFIG['BRIDGE'].filesPort;

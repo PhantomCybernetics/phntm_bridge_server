@@ -60,7 +60,7 @@ Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
 
   "BRIDGE": {
       "registerAddress": "https://register.phntm.io", // this is geo balanced
-      "use_https": true,
+      "useHttps": true,
       "registerPort": 443,
       "registerSsl": {
           "private": "/etc/letsencrypt/live/register.phntm.io/privkey.pem",

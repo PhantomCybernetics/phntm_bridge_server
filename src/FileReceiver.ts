@@ -20,7 +20,7 @@ import * as JSONC from 'comment-json';
 
 const defaultConfig = JSONC.parse(fs.readFileSync(dir+'/config.jsonc').toString());
 const CONFIG = _.merge(defaultConfig);
-const USE_HTTPS:number = CONFIG['BRIDGE'].use_https;
+const USE_HTTPS:number = CONFIG['BRIDGE'].useHttps;
 const PUBLIC_BRIDGE_ADDRESS:string = CONFIG['BRIDGE'].bridgeAddress; // this is not
 
 const FILES_CACHE_DIR:string = CONFIG['BRIDGE'].filesCacheDir;
