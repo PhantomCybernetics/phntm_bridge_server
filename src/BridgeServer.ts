@@ -445,6 +445,7 @@ register_express.use(express.json());
 
 register_express.get('/', async function(req:express.Request, res:express.Response) {
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader("Access-Control-Allow-Origin", "*");
     res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4));
 });
 
