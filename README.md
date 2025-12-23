@@ -16,7 +16,7 @@ In order to provide a secure STUN/TURN service, the Bridge Server also synchroni
 This server also provides the robot discovery service: Upon request from a peer, it queries the central database to determine
 which Bridge Server instance is the robot registered on.
 
-![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Cloud_Bridge.png)
+![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Server.svg)
 
 ## Install Bridge Server
 
