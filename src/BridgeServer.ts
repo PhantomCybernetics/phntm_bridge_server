@@ -711,10 +711,12 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         let peer_app = PeerApp.FindConnected(id_app, id_app_type);
         if (peer_app && peer_app.getRobotSubscription(robot.id)) {
             peer_app.socket.emit('robot:update', update_data, (peer_app_answer:any) => {
-                return_callback(peer_app_answer);
+                if (return_callback)
+                    return_callback(peer_app_answer);
             });
         } else {
-            return_callback({err:1, msg:'Peer App not found'});
+            if (return_callback)
+                return_callback({err:1, msg:'Peer App not found'});
         }
     });
 
@@ -882,30 +884,28 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
     peer_app_socket.emit('instance', peer_app.id.toString());
 
-    peer_app_socket.on('robot', async function (data:{id_robot:string, read?:string[], write?:string[][]}, returnCallback) {
+    peer_app_socket.on('robot', async function (data:{id_robot:string, read?:string[], write?:string[][]}, return_callback:any) {
         $d.log(peer_app+' requesting robot ', VERBOSE_PEERS ? data : '#' + data.id_robot);
 
-        if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
-            if (returnCallback) {
-                returnCallback({
-                    'err': 1,
-                    'msg': 'Invalid robot id '+data.id_robot
-                });
-            }
+        if (!return_callback)
             return false;
+
+        if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
+            return return_callback({
+                'err': 1,
+                'msg': 'Invalid robot id '+data.id_robot
+            });
         }
         let id_robot = new ObjectId(data.id_robot);
         let robot = Robot.FindConnected(id_robot);
         if (!robot) { // robot not connected, check it exists and return basic info
-            
             const db_robot = (await robots_collection.findOne({_id: id_robot }));
             if (!db_robot) {
-                return returnCallback({'err':1, 'msg': 'Robot not found here (did you register it first?)'}); //invalid id
+                return return_callback({'err':1, 'msg': 'Robot not found here (did you register it first?)'}); //invalid id
             }
 
             peer_app.subscribeRobot(id_robot, data.read ? data.read : [], data.write ? data.write : []);
-
-            return returnCallback({
+            return return_callback({
                 id_robot: id_robot.toString(),
                 name: db_robot['name'] ? db_robot['name'] : 'Unnamed Robot'
             });
@@ -917,12 +917,12 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
             if (!robot.connected_peers[peer_app.id.toString()])
                 robot.connected_peers[peer_app.id.toString()] = peer_app;
             $d.l('Initializing '+peer_app);
-            robot.initPeer(peer_app, sub, returnCallback);
+            robot.initPeer(peer_app, sub, return_callback);
         } else {
             if (robot.waiting_peers.indexOf(peer_app) === -1)
                 robot.waiting_peers.push(peer_app);
             $d.l('Queuing '+peer_app);
-            robot.updateWaitingPeers(peer_app, returnCallback);
+            robot.updateWaitingPeers(peer_app, return_callback);
         }
     });
 
@@ -965,6 +965,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
         robot.socket.emit('introspection', data, (answerData:any) => {
             $d.log('Got robot\'s introspection answer:', answerData);
+            if (!return_callback)
+                return;
             return return_callback(answerData);
         });
     });
@@ -981,7 +983,7 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                 return_callback({
                     'err': 1,
                     'msg': 'Invalid subscription sources'
-                })
+                });
             }
             return;
         }
@@ -991,8 +993,9 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
         robot.socket.emit('subscribe', data, (resData:any) => {
 
             $d.log('Got robot\'s subscription answer:', resData);
-
-            return return_callback(resData);
+            if (return_callback)
+                return return_callback(resData);
+            return;
         });
     });
 
@@ -1020,7 +1023,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
             $d.log('Got robot\'s write subscription answer:', resData);
 
-            return return_callback(resData);
+            if (return_callback)
+                return return_callback(resData);
         });
 
     });
@@ -1060,8 +1064,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
         robot.socket.emit('unsubscribe', data, (resData:any) => {
 
             $d.log('Got robot\'s unsubscription answer:', resData);
-
-            return return_callback(resData);
+            if (return_callback)
+                return return_callback(resData);
         });
     });
 
@@ -1088,7 +1092,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
             $d.log('Got robot\'s unsubscription answer:', resData);
 
-            return return_callback(resData);
+            if (return_callback)
+                return return_callback(resData);
         });
     });
 
@@ -1117,7 +1122,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
             $d.log('Got robot\'s sdp:answer answer:', resData);
 
-            return return_callback(resData);
+            if (return_callback)
+                return return_callback(resData);
         });
     });
 

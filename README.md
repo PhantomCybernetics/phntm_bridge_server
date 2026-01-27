@@ -55,7 +55,7 @@ npm install
 Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
 ```jsonc
 {
-  "dbUrl": "mongodb://172.17.0.1:27017", // on Linux; use "mongodb://host.docker.internal:27017" on Mac
+  "dbUrl": "mongodb://127.0.0.1:27017",
   "dieOnException": true,
 
   "BRIDGE": {
