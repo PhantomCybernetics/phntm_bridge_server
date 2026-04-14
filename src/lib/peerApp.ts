@@ -52,13 +52,16 @@ export class PeerApp {
         return '[PeerApp #' + this.id.toString() + ']';
     }
 
-    static FindConnected(id_peer_app:ObjectId, id_type:ObjectId):PeerApp|null {
+    static FindConnected(id_peer_app:ObjectId, id_type:ObjectId|null):PeerApp|null {
 
         for (let i = 0; i < PeerApp.connected_apps.length; i++) {
-            if (PeerApp.connected_apps[i].id.equals(id_peer_app) &&
-                PeerApp.connected_apps[i].id_type.equals(id_type))
+            if (PeerApp.connected_apps[i].id.equals(id_peer_app))
             {
-                return PeerApp.connected_apps[i];
+                if (id_type && PeerApp.connected_apps[i].id_type.equals(id_type)) {
+                    return PeerApp.connected_apps[i];
+                } else if (!id_type) {
+                    return PeerApp.connected_apps[i];
+                }
             }
         }
 

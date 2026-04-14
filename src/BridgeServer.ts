@@ -770,7 +770,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
 
         if (!robot.is_authentificated || !robot.is_connected)
             return;
-        
+
         if (VERBOSE_SERVICES)
             $d.l('Got '+services.length+' services from '+robot, services);
         else
@@ -778,6 +778,36 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
 
         robot.services = services;
         robot.servicesToSubscribers();
+    });
+
+    robot_socket.on('action:result', async function(result:any) {
+
+        if (!robot.is_authentificated || !robot.is_connected)
+            return;
+        
+        if (VERBOSE_SERVICES)
+            $d.l('Got goal '+result.goal_uuid+' action-result from '+robot, result);
+        else
+            $d.l('Got goal '+result.goal_uuid+' action-result from '+robot);
+
+        if (!result['id_peer'] || !ObjectId.isValid(result['id_peer'])) {
+            $d.e('Got invalid id_peer from '+robot, result);
+            return;
+        }
+
+        let id_peer:ObjectId = new ObjectId(result['id_peer']);
+        let peer_app = PeerApp.FindConnected(id_peer, null);
+        if (!peer_app) {
+            $d.l('Peer ' + result['id_peer'] + ' not connected');
+            return;
+        }
+
+        peer_app.socket.emit('action_result', robot.labelSubsciberData({
+            'goal_uuid': result.goal_uuid,
+            'status': result.status
+        }));
+        // robot.services = services;
+        // robot.servicesToSubscribers();
     });
 
     robot_socket.on('cameras', async function(cameras:any[]) {
