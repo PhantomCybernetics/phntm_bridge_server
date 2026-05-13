@@ -511,6 +511,7 @@ register_express.post('/locate', async function(req:express.Request, res:express
             res.send(JSON.stringify({
                 'id_robot': robot_id,
                 'bridge_server': dbRobot['bridge_server'],
+                'name': dbRobot['name'],
                 'ui_custom_css': dbRobot['ui_custom_includes_css'],
                 'ui_custom_js': dbRobot['ui_custom_includes_js'],
                 'ui_background_disconnect_sec': dbRobot['ui_background_disconnect_sec']
