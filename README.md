@@ -2,19 +2,19 @@
 
 This server facilitates WebRTC P2P connection between a Phantom Bridge Client node running on a robot, and the Bridge Web UI, or any similar clients implementing this API.
 
-The server keeps a database of App and Robot IDs and their security keys. It offers API for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization without recording any peer communication.
+The server keeps a database of App and Robot IDs and their security keys. It offers API and a command line utility for both new Robot and App registration. This server also perfomrs some basic loggig of both robot and peer apps utilization without recording any peer communication.
 
-this server also relies messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, robot introspection results, and ROS service calls. By design, the fast WebRTC communication entirely bypasses this server and only uses a TURN server when P2P connection is not possible. See TURN Server below.
+This server also forwards messages between peers using Socket.io when reliability is required, such as in the case of WebRTC signalling, robot introspection results, and ROS Service & Action calls. By design, the fast WebRTC communication entirely bypasses this server and only uses a TURN server when P2P connection is not possible. See TURN Server below.
 
-The server also parses and caches the ROS `.idl` files for all message and service types discovered on the robot by Phntm Bridge Client. These are converted to JSON and pushed into peers such as the Phntm WEB UI, making consistent bi-directional message serialization and deserialization possible. Message definitions are loaded fresh on every robot connection, and cached in memory for the time robot remains connected.
+The server also parses and caches the ROS `.idl` files for all message and service types discovered on the robot by Phntm Bridge Client. These are converted to JSON and pushed into peers such as the Phantom Bridge UI, making consistent bi-directional message serialization and deserialization possible. Message definitions are loaded fresh on every robot connection, and cached in memory for the time robot remains connected.
 
-Bridge Server also forwards files requested by a peer App (e.g. Web UI) from the robot's filesystem. This is very useful for instance for extracting robot's URFF model components, such as meshes, textures and materials. These files are chached here in /file_fw_cache for faster replies that don't repeatedly exhaust robot's network connectivity.
+Bridge Server also forwards files requested by a peer App (e.g. the Web UI) from the robot's filesystem. This is very useful for instance for extracting robot's URFF model components, such as meshes, textures and materials. These files are chached here in /file_fw_cache for faster replies that don't repeatedly exhaust robot's network connectivity.
 ROS service is provided to clear this cache.
 
 In order to provide a secure STUN/TURN service, the Bridge Server also synchronizes robot's credentials (ID and ICE secret) with the list of configured ICE servers.
 
 This server also provides the robot discovery service: Upon request from a peer, it queries the central database to determine
-which Bridge Server instance is the robot registered on.
+which Bridge Server instance is the robot currently associated with.
 
 ![Infrastructure map](https://raw.githubusercontent.com/PhantomCybernetics/phntm_bridge_docs/refs/heads/main/img/Architecture_Server.svg)
 
@@ -78,7 +78,7 @@ Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
       },
       "uiAddressPrefix": "https://bridge.phntm.io/", // this is shared by several bridge instances and geo loadbalanced
 
-      "sesAWSRegion": "us-west-1", // emails via SES
+      "sesAWSRegion": "", // emails via SES, e.g. "us-west-1"
       "emailSender": "Phantom Bridge <no-reply@phntm.io>",
       
       "verboseDefs": false,
@@ -90,10 +90,12 @@ Create a new config file e.g. `~/phntm_bridge_server/config.jsonc` and paste:
 
       "keepSessionsLoadedForMs": 30000, // keep 30s after robot disconnects, then unload
 
-      "defaultMaintainerEmail": "robot.master@domain.com",
+      "requireMaintainerEmail": true,
 
       "filesPort": 1338, // file extractor port
       "filesCacheDir": "/home/ubuntu/file_fw_cache", // client files will be cached here
+      "filesCdnPrefix": "", // CDN url prefix, incl. server files prefix, e.g. "https://bridge-ui-cdn.phntm.io/robot-files-us-ca"
+      "filesCdnPathPrefix": "", // server files CDN prefix, e.g. "/robot-files-us-ca"
 
       "iceServers": [ // stun/turn servers to push to robots and sync ice credentials with
         "turn:ca.turn.phntm.io:3478",
@@ -173,18 +175,30 @@ sudo systemctl start phntm_file_receiver.service
 
 ## REST API
 
+> [!NOTE]
+> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Bridge Server instance nearest to you, such as `us-ca.bridge.phntm.io`. You can later change this to a different Bridge Server.
+
 ### Registering a new Robot
 
-Fetching `https://register.phntm.io/robot?yaml` (GET) registers a new robot and returns a default configuration YAML file for your phntm_bridge. This uses robot_config.templ.yaml as a template. 
+`https://register.phntm.io/register/robot` (POST) registers a new Robot and returns a default configuration YAML file for your Phantom Bridge Client. This uses robot_config.templ.yaml as a template. Use the Registration Utility (see below).
 
-Calling `https://register.phntm.io/robot?json` also registers a new robot, but returns a simplyfied JSON.
+`https://register.phntm.io/config/robot/:FORMAT/:ID_ROBOT/:KEY` (GET) returns the default config for an already registered Robot (format is 'yaml' or 'json')
 
-> [!NOTE]
-> The `register.phntm.io` hostname is geographically load-balanced and will return configuration with a Bridge Server instance nearest to you, such as `us-ca.bridge.phntm.io`.
+`https://register.phntm.io/locate` (POST) locates a registered robot (finds its current Bridge Server) and returns it with some useful metadata (Web UI uses this)
 
 ### Registering a new App
 
-Fetching `https://register.phntm.io/app` (GET) registers a new App on this server and returns a JSON with generated app id and a secret key. Phntm Web UI forks and other services using this API are considered individual apps and need to be registered first.
+`https://register.phntm.io/register/app` (POST) registers a new App on this server and returns a JSON with generated APP_ID and a secret KEY. Phantom Web UI forks and other services using this API are considered individual Apps and need to be registered first. Use the Registration Utility (see below).
+
+`https://register.phntm.io/config/app/:ID_APP/:KEY` (GET) returns default JSON config for an already registered App
+
+### Registration utility
+
+Use the provided register.sh for easy Robot/App registrations:
+```bash
+bash <(curl -s https://register.phntm.io/register.sh)
+# then follow the instructions
+```
 
 ### Server status
 
@@ -193,15 +207,15 @@ Provides various statistical information about the server instance utilization.
 
 ### File Receiver API
 
-The File Receiver server shipped with Coud Bridge comes with its own REST API for handling file uploads and cache cleanup: \
+The File Receiver server shipped with Bridge Server comes with its own REST API for handling file uploads and cache cleanup: \
 `https://us-ca.bridge.phntm.io:1336/upload` (POST) \
-Receives one file chunk at the time; expects params `file` and `json` {fileUrl, idRobot, authKey} \
+Receives one file chunk at the time; expects multi-part parts `file` and `json` { path, idRobot, key, parts } \
  \
 `https://us-ca.bridge.phntm.io:1336/complete` (POST) \
-Combines uploaded chunks; expects params `json` {idRobot, authKey, fileUrl, totalParts} \
+Combines uploaded chunks; expects params `json` { path, idRobot, key, parts, totalBytes } \
  \
 `https://us-ca.bridge.phntm.io:1336/clear_cache` (POST) \
-Clears robot's server file cache; expects params `json` {idRobot, authKey}
+Clears robot's server file cache; expects params `json` { idRobot, key }
 
 ## TURN/STUN Server
 Phantom Bridge Server needs to be accompanied by a TURN server which provides a backup connectivity when P2P link is not available between the peers, such as when teleoperating a robot from a different network. This can be installed on a separate machine with a public IP. Secure ICE credentials for each robot are generated during registration and synced with the ICE servers listed in the Bridge Server's config file.

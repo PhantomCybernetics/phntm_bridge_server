@@ -1,7 +1,7 @@
 import * as express from "express";
 const multer = require('multer');
 const path = require('path');
-import { GetCachedFileName, GetCerts } from './lib/helpers'
+import { GetCachedFileName, GetCerts, FormatBytes } from './lib/helpers'
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId } from 'mongodb';
 
 import { Debugger } from './lib/debugger';
@@ -95,52 +95,59 @@ app.post('/upload', upload.single('file'), async (req:any, res:any) => {
   try {
     const file = req.file as UploadedFile;
     let json = JSON.parse(req.body.json);
-    let fileUrl = json['fileUrl'];
+    let srcPath = json['path'];
     const idRobot = json['idRobot'];
     const authKey = json['key'];
-    
-    await checkAuth(idRobot, authKey)
-      .then(async()=>{
+    const totalParts = json['parts'];
+
+    await checkAuth(idRobot, authKey).then(async()=>{
 
         if (!file) {
           return res.status(400).json({ error: 'No file uploaded' });
         }
     
         const { originalname, path: tempPath } = file;
-        const [originalFileName, partNumber] = originalname.split('.part');
-        const fileName = GetCachedFileName(fileUrl);
-        const chunksDir = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', fileName+'.chunks');
+        const [ originalFileName, partNumberStr ] = originalname.split('.part');
+        const partNumber = parseInt(partNumberStr);
+        const cachedFileName = GetCachedFileName(srcPath);
+        const chunksDir = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', cachedFileName+'.chunks');
         const targetPath = path.join(chunksDir, `part${partNumber}`);
     
         await fs.ensureDir(chunksDir);
         await fs.move(tempPath, targetPath, { overwrite: true });
-    
-        $d.log('['+idRobot+'] '+('Chunk '+partNumber+' of '+fileName+' ok').cyan);
+      
+        $d.log('['+idRobot+'] '+('Chunk '+(partNumber+1)+'/'+totalParts+' of "'+srcPath+'" received ok').cyan);
         res.json({ message: 'Chunk ok', partNumber });
-      })
-      .catch(()=>{
+
+    }).catch(()=>{
         $d.log('['+idRobot+'] '+('Invalid credentials provided').red);
         res.status(403).json({ error: 'Invalid credentials provided' });
-      });
-    
+    });
   } catch (error) {
-    $d.e('Error handling file upload:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } 
+      $d.e('Error handling file upload:', error);
+      res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/complete', express.json(), async (req:any, res:any) => {
   try {
 
-    const { idRobot, authKey, fileUrl, totalParts } = req.body;
-    const fileName = GetCachedFileName(fileUrl);
-    const chunksDir = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', fileName+'.chunks');
-    const targetPath = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', fileName);
+    const idRobot = req.body['idRobot'];
+    const authKey = req.body['key'];
+    const srcPath = req.body['path'];
+    const totalParts = req.body['parts'];
+    const totalBytes = req.body['totalBytes'];
 
-    await checkAuth(idRobot, authKey)
-      .then(async()=>{
-    
-        $d.log('['+idRobot+'] '+('Combining chunks of '+fileName).green);
+    const cachedFileName = GetCachedFileName(srcPath);
+    const chunksDir = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', cachedFileName+'.chunks');
+    const targetPath = path.join(FILES_CACHE_DIR+'/'+idRobot+'/', cachedFileName);
+
+    await checkAuth(idRobot, authKey).then(async()=>{
+
+        if (totalParts > 1)
+          $d.log('['+idRobot+'] '+('Completing "'+srcPath+'", combining '+totalParts+' chunks [' + FormatBytes(totalBytes)+']').green);
+        else
+          $d.log('['+idRobot+'] '+('Completing "'+srcPath+'" ['+ FormatBytes(totalBytes) + ']').green);
     
         const writeStream = fs.createWriteStream(targetPath);
     
@@ -158,12 +165,11 @@ app.post('/complete', express.json(), async (req:any, res:any) => {
         writeStream.end();
         await fs.remove(chunksDir);
         
-        res.json({ fileName: fileName });
-      })
-      .catch(()=>{
+        res.json({ cachedfileName: cachedFileName });
+
+      }).catch(()=>{
         res.status(403).json({ error: 'Invalid credentials provided' });
       });
-
   } catch (error) {
     $d.e('Error completing file upload:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -173,7 +179,8 @@ app.post('/complete', express.json(), async (req:any, res:any) => {
 app.post('/clear_cache', express.json(), async (req:any, res:any) => {
   try {
 
-    const { idRobot, authKey } = req.body;
+    const idRobot = req.body['idRobot'];
+    const authKey = req.body['key'];
     const clearPath = path.join(FILES_CACHE_DIR+'/'+idRobot);
 
     await checkAuth(idRobot, authKey)
@@ -193,6 +200,11 @@ app.post('/clear_cache', express.json(), async (req:any, res:any) => {
     $d.e('Error completing clear cache request:', error);
     res.status(500).send('Error completing clear cache request');
   }
+});
+
+app.all('*', (req:any, res:any) => {
+  console.log('Unhandled URL:', req.originalUrl);
+  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
 let db:Db = null;

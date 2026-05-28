@@ -4,7 +4,7 @@ const $d:Debugger = Debugger.Get();
 import * as SocketIO from "socket.io";
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId, FindCursor } from 'mongodb';
 import { PeerApp, RobotSubscription } from './peerApp'
-import { ErrOutText, GetDomainName } from './helpers'
+import { ErrOutText, GetDomainName, SendEmail_UI_Link} from './helpers'
 
 const bcrypt = require('bcrypt-nodejs');
 import * as express from "express";
@@ -15,6 +15,7 @@ import { MessageDefinition } from "@foxglove/message-definition";
 
 import axios, { AxiosResponse, AxiosError }  from 'axios';
 import { resolve4 } from "dns";
+import { StringLiteral } from "typescript";
 
 export class RobotSocket extends SocketIO.Socket {
     db_data?: any;
@@ -24,7 +25,7 @@ export class Robot {
     id: ObjectId;
     name: string;
     maintainer_email: string;
-
+    last_email_link_sent: string;
     ip:string | null;
 
     ros_distro: string;
@@ -63,11 +64,13 @@ export class Robot {
     static LOG_EVENT_DISCONNECT: number = 0;
     static LOG_EVENT_ERR: number = -1;
 
+    extracting_files_in_the_fly: { [ path: string]: any[] } = {};
+
     introspection: boolean;
 
     static connected_robots:Robot[] = [];
 
-    public constructor(id_robot:ObjectId, robot_socket:RobotSocket, name:string, maintainer_email:string,
+    public constructor(id_robot:ObjectId, robot_socket:RobotSocket, name:string, maintainer_email:string, last_email_link_sent:string,
                        peer_limit:number, ros_distro:string, rmw_implementation:string, git_sha:string, git_tag:string,
                        custom_includes_js:string[], custom_includes_css:string[], ui_background_disconnect_sec:number,
                        verbose_webrtc:boolean, verbose_defs:boolean, verbose_peers:boolean, verbose_input_locks:boolean
@@ -77,6 +80,7 @@ export class Robot {
         this.ip = robot_socket.conn.remoteAddress;
         this.name = name;
         this.maintainer_email = maintainer_email;
+        this.last_email_link_sent = last_email_link_sent; 
         this.peer_limit = peer_limit ? peer_limit : 0; 
         this.connected_peers = {};
         this.waiting_peers = [];
@@ -101,6 +105,7 @@ export class Robot {
         this.verbose_peers = verbose_peers;
         this.verbose_input_locks = verbose_input_locks;
         this.input_topic_locks = {};
+        this.extracting_files_in_the_fly = {};
     }
 
     toString() : string {
@@ -451,6 +456,7 @@ export class Robot {
                                     { $set: {
                                         name: this.name,
                                         maintainer_email: this.maintainer_email,
+                                        last_email_link_sent: this.last_email_link_sent,
                                         bridge_server: public_bridge_address, // save current instance for /locate
                                         ros_distro: this.ros_distro,
                                         rmw_implementation: this.rmw_implementation,
@@ -529,35 +535,39 @@ export class Robot {
         });
     }
 
-    static async Register(req:express.Request, res:express.Response, set_password:string, robots_collection:Collection,
-        public_bridge_address:string,
-        ice_sync_servers:string[], iceSyncPort:number, iceSyncSecret:string,
-        ui_address_prefix:string, gosquared:any
-    ) {
+    static async Register(req:express.Request, res:express.Response, maintainer_email:string,
+                          robots_collection:Collection, public_bridge_address:string, ice_sync_servers:string[], iceSyncPort:number, iceSyncSecret:string,
+                          sio_port:number, ui_address_prefix:string, email_sender:string, ses_client:any, gosquared:any) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const salt_rounds = 10;
+        let robot_name:string = req.body['name'];
+        let new_key = new ObjectId().toString(); //new key generated here;
 
         bcrypt.genSalt(salt_rounds, async function (err:any, salt:string) {
-            if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res ); }
+            if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res, 500 ); }
     
-            bcrypt.hash(set_password, salt, null, async function (err:any, hash:string) {
-                if (err) { $d.err('Error while hashing password'); return ErrOutText( 'Error while registering', res ); }
+            bcrypt.hash(new_key, salt, null, async function (err:any, hash:string) {
+                if (err) { $d.err('Error while hashing password'); return ErrOutText( 'Error while registering', res, 500 ); }
     
                 let date_registered = new Date();
                 
                 let ice_secret = new ObjectId().toString();
-                let robotReg:InsertOneResult = await robots_collection.insertOne({
+                let robot_reg:InsertOneResult = await robots_collection.insertOne({
                     registered: date_registered,
                     bridge_server: public_bridge_address,
                     reg_ip: remote_ip,
                     key_hash: hash,
-                    ice_secret: ice_secret
+                    ice_secret: ice_secret,
+                    name: robot_name,
+                    maintainer_email: maintainer_email,
+                    last_email_link_sent: maintainer_email // email now
                 });
     
-                $d.l(('Registered new robot id '+robotReg.insertedId.toString()+' from '+remote_ip).yellow);
+                $d.l(('Registered new robot ID '+robot_reg.insertedId.toString()+' from '+remote_ip).yellow);
                 
-                Robot.SyncICECredentials(robotReg.insertedId.toString(), ice_secret, ice_sync_servers, iceSyncPort, iceSyncSecret);
+                Robot.SyncICECredentials(robot_reg.insertedId.toString(), ice_secret, ice_sync_servers, iceSyncPort, iceSyncSecret);
                 
+                // log new robot registered
                 if (gosquared) {
                     const response = await fetch('https://api.gosquared.com/tracking/v1/event?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
                         method: 'POST',
@@ -566,63 +576,59 @@ export class Robot {
                             'event': {
                                 'name': 'Robot registered (' + GetDomainName(public_bridge_address) + ')',
                                 'data': {
-                                    'id_robot': robotReg.insertedId.toString()
+                                    'id_robot': robot_reg.insertedId.toString()
                                 }
                             },
                             'ip': remote_ip,
                             'page': {
-                                'url': ui_address_prefix + '#' + robotReg.insertedId.toString()
+                                'url': ui_address_prefix + '#' + robot_reg.insertedId.toString()
                             }
                         })
                     });
                     const response_rata:any = await response.json();
                     if (!response_rata.success) {
                         $d.err('Got error from GSQ "register" event: ', response_rata);
-                    } // else {
-                    //     $d.log('GSQ "register" event reply', responseData);
-                    // }
+                    }
                 }
 
-                if (req.query.yaml !== undefined) {
-                    return res.redirect('/robot?yaml&id='+robotReg.insertedId.toString()+'&key='+set_password);
-                } else {
-                    return res.redirect('/robot?id='+robotReg.insertedId.toString()+'&key='+set_password);
-                }
+                SendEmail_UI_Link(robot_reg.insertedId.toString(), robot_name, maintainer_email,
+                                  ui_address_prefix, email_sender, ses_client);
+
+                return Robot.GetDefaultConfig(req, res, robot_reg.insertedId.toString(), new_key, 'yaml',
+                                              robots_collection, public_bridge_address, sio_port, ui_address_prefix);
             });
         });
     }
 
 
-    static async GetDefaultConfig(req:express.Request, res:express.Response, robots_collection:Collection,
-            public_address:string, sio_port:number, robot_ui_address:string, default_maintainer_email:string) {
+    static async GetDefaultConfig(req:express.Request, res:express.Response, id_robot:string, key:string, format:string,
+                                  robots_collection:Collection, public_address:string, sio_port:number, ui_address_prefix:string) {
     
-        if (!req.query.id || !ObjectId.isValid(req.query.id as string) || !req.query.key) {
-            $d.err('Invalid id_robot provided in GetDefaultConfig: '+req.query.id)
-            return res.status(403).send('Access denied, invalid credentials');
-        }
+        let search_id = new ObjectId(id_robot);
+        let robot_ui_address = ui_address_prefix + id_robot;
     
-        let searchId = new ObjectId(req.query.id as string);
-        const dbRobot = (await robots_collection.findOne({_id: searchId }));
+        const db_robot = (await robots_collection.findOne({_id: search_id }));
     
-        if (dbRobot) {
-            bcrypt.compare(req.query.key, dbRobot.key_hash, function(err:any, passRes:any) {
-                if (passRes) { //pass match => good
+        if (db_robot) {
+            bcrypt.compare(key, db_robot.key_hash, function(err:any, pass_res:any) {
+                if (pass_res) { //pass match => good
                     
-                    if (req.query.yaml !== undefined) {
+                    if (format == 'yaml') {
     
                         const dir:string  = __dirname + "/../../";
                         let cfg:string = fs.readFileSync(dir+'robot_config.templ.yaml').toString(); 
                     
                         cfg = cfg.replace('%HOST%', public_address);
-                        cfg = cfg.replace('%REG_DATE_TIME%', dbRobot.registered.toISOString());
-                        cfg = cfg.replace('%REG_IP%', dbRobot.reg_ip);
+                        cfg = cfg.replace('%REG_DATE_TIME%', db_robot.registered.toISOString());
+                        cfg = cfg.replace('%REG_IP%', db_robot.reg_ip);
                         cfg = cfg.replace('%ROBOT_UI_ADDRESS%', robot_ui_address);
     
-                        cfg = cfg.replace('%ROBOT_ID%', dbRobot._id.toString());
-                        cfg = cfg.replace('%ROBOT_KEY%', req.query.key as string);
-                        cfg = cfg.replace('%MAINTAINER_EMAIL%', default_maintainer_email);
+                        cfg = cfg.replace('%ROBOT_ID%', db_robot._id.toString());
+                        cfg = cfg.replace('%ROBOT_KEY%', key);
+                        cfg = cfg.replace('%ROBOT_NAME%', db_robot.name.replace(/'/g, "\\'"));
+                        cfg = cfg.replace('%MAINTAINER_EMAIL%', db_robot.maintainer_email);
     
-                        cfg = cfg.replace('%CLOUD_BRIDGE_ADDRESS%', dbRobot.bridge_server);
+                        cfg = cfg.replace('%BRIDGE_SERVER_ADDRESS%', db_robot.bridge_server);
                         cfg = cfg.replace('%SIO_PATH%', '/robot/socket.io');
                         cfg = cfg.replace('%SIO_PORT%', sio_port.toString());
     
@@ -631,27 +637,31 @@ export class Robot {
     
                         return res.send(cfg);
     
-                    } else { // json - this is not very useful yet
+                    } else if (format == 'json') { // json - this is not very useful yet
+
                         // $d.l(dbRobot);
                         res.setHeader('Content-Type', 'application/json');
                         return res.send(JSON.stringify({
-                            id_robot: dbRobot._id.toString(),
-                            key: req.query.key,
-                            cloud_bridge_address: dbRobot.bridge_server,
+                            id_robot: db_robot._id.toString(),
+                            robot_name: db_robot.name,
+                            key: key,
+                            maintainer_email: db_robot.maintainer_email,
+                            bridge_server_address: db_robot.bridge_server,
                             sio_path: '/robot/socket.io',
-                            sio_port: sio_port,
+                            sio_port: sio_port
                         }, null, 4));
+                        
+                    } else {
+                        return ErrOutText("Invalid format (use 'yaml' or 'json')", res, 400);
                     }
     
                 } else { //invalid key
-                    res.status(403);
                     $d.err('Robot not found in GetDefaultConfig: '+req.query.id)
-                    return res.send('Access denied, invalid credentials');
+                    return ErrOutText("Access denied, invalid credentials", res, 403);
                 }
             });
-    
         } else { //robot not found
-            return res.status(403).send('Access denied, invalid credentials');
+            return ErrOutText("Access denied, invalid credentials", res, 403);
         }
     }
 

@@ -5,7 +5,7 @@ const $d:Debugger = Debugger.Get('Bridge Server');
 
 import { SESClient } from "@aws-sdk/client-ses";
 
-import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail, GetDomainName } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail_UI_Link, GetDomainName, GetRobotFilePublicUrl, ErrOutText } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -17,6 +17,8 @@ const http = require('http');
 import { MongoClient, Db, Collection, MongoError, InsertOneResult, ObjectId } from 'mongodb';
 import * as SocketIO from "socket.io";
 import * as express from "express";
+const { XMLParser, XMLBuilder } = require('fast-xml-parser');
+import legit from 'legit';
 
 import { PeerApp, PeerAppSocket } from './lib/peerApp'
 import { Robot, RobotSocket } from './lib/robot'
@@ -41,7 +43,10 @@ if (FILES_CACHE_DIR && !fs.existsSync(FILES_CACHE_DIR)) {
     $d.e('Files cache dir not found: '+FILES_CACHE_DIR);
     process.exit();
 };
-const DEFAULT_MAINTAINER_EMAIL:string = CONFIG['BRIDGE'].defaultMaintainerEmail;
+const FILES_CDN_PREFIX:string = CONFIG['BRIDGE'].filesCdnPrefix;
+const FILES_CDN_PATH_PREFIX:string = CONFIG['BRIDGE'].filesCdnPathPrefix;
+
+const REQUIRE_MAINTAINER_EMAIL:boolean = CONFIG['BRIDGE'].requireMaintainerEmail;
 
 const PUBLIC_REGISTER_ADDRESS:string = CONFIG['BRIDGE'].registerAddress; // this is geo loabalanced
 const PUBLIC_BRIDGE_ADDRESS:string = CONFIG['BRIDGE'].bridgeAddress; // this is not
@@ -96,7 +101,7 @@ const ICE_SYNC_PORT:number = CONFIG['ICE_SYNC'].port;
 const ICE_SYNC_SECRET:string = CONFIG['ICE_SYNC'].secret;
 
 const SES_AWS_REGION:string = CONFIG['BRIDGE'].sesAWSRegion;
-const sesClient = new SESClient({ region: SES_AWS_REGION });
+const ses_client = new SESClient({ region: SES_AWS_REGION });
 const EMAIL_SENDER:string = CONFIG['BRIDGE'].emailSender;
 
 // gosquared credentials
@@ -157,7 +162,7 @@ process.on('uncaughtException', function(err) {
     $d.e('Caught unhandled exception: ', err);
 });
 
-files_express.use((req, res, next) => {
+files_express.use((req:express.Request, res:express.Response, next:any) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, PUT");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -169,39 +174,20 @@ files_express.get('/', async function(req:express.Request, res:express.Response)
     res.send(JSON.stringify({'file_forwarder': PUBLIC_BRIDGE_ADDRESS}, null, 4));
 });
 
-files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Request, res:express.Response) {
-
-    let auth_ok = false;
-    let peer_app:PeerApp|null = null;
-    for (let i = 0; i < PeerApp.connected_apps.length; i++) {
-        //let id_app:string = PeerApp.connected_apps[i].id.toString();
-        peer_app = PeerApp.connected_apps[i];
-        if (req.params.SECRET == PeerApp.connected_apps[i].files_secret.toString()) {
-            auth_ok = true;
-            break;
-        }
-    };
-
-    let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
-
-    if (!auth_ok || !peer_app) {    
-        $d.e('Access to file fw denied '+req.params.FILE_URL+'; secret='+req.params.SECRET+'; IP='+remote_ip);
-        return res.sendStatus(403); //access denied
-    }
+async function serveFile(req:express.Request, res:express.Response) {
 
     if (!req.params.ID_ROBOT || !ObjectId.isValid(req.params.ID_ROBOT)) {
         $d.e('Invalid id robot in file request:', req.params);
         return res.sendStatus(400); //bad request
     }
     let id_robot = new ObjectId(req.params.ID_ROBOT);
-    let robot = Robot.FindConnected(id_robot);
+    let robot = Robot.FindConnected(id_robot); // robot must be connected
     if (!robot) {
         $d.e('Error seding cached file, robot '+id_robot+' not connected');
         return res.sendStatus(502); //bad gateway
     }
-    $d.l((peer_app + ' reguested ' + req.params.FILE_URL + ' for robot #'+id_robot).cyan);
 
-    let fname_cache = GetCachedFileName(req.params.FILE_URL);
+    let fname_cache = req.params.FILE_URL;
     
     if (!FILES_CACHE_DIR)  {
         $d.e('Files chache dir not set');
@@ -212,7 +198,9 @@ files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Req
     
     try {
         await fs.promises.access(path_cache, fs.constants.R_OK);
-        $d.l(path_cache+' found in cache');
+        const stats = fs.statSync(path_cache);
+        $d.l(path_cache+' found in cache, last modified: ' + stats.mtime.toUTCString());
+        res.set('Last-Modified', stats.mtime.toUTCString());
         return res.sendFile(path_cache, {}, function (err) {
             try {
                 if (err) {
@@ -226,77 +214,12 @@ files_express.get('/:SECRET/:ID_ROBOT/:FILE_URL', async function(req:express.Req
 
     } catch (err) {
         $d.l(fname_cache+' not found in server cache');
-
-        // check cache folder
-        try {
-            await fs.promises.access(FILES_CACHE_DIR+'/'+id_robot.toString(), fs.constants.R_OK | fs.constants.W_OK);
-        } catch (err1:any) {
-            try {
-                $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString());
-                await fs.promises.mkdir(FILES_CACHE_DIR+'/'+id_robot.toString(), { recursive: false });
-            } catch (err2:any) {
-                if (err2 && err2.code != 'EEXIST') { // created since first check
-                    $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+id_robot.toString(), err2);
-                    return res.sendStatus(500); // not caching but should => internal server error
-                }
-            }
-        }
+        return res.sendStatus(404); // not found
     }
-    
-    // fetch the file from robot
-    $d.l('Fetching file from robot... ');
+}
 
-    return robot.socket.emit('file', req.params.FILE_URL, async (robot_res:any) => {
-
-        if (!robot_res || robot_res.err || !robot_res.fileName) {
-            $d.e(robot + ' returned error... ', robot_res);
-            return res.sendStatus(404); // not found
-        }
-
-        $d.l((robot + ' uploaded file '+robot_res.fileName).cyan);
-
-        if (!path_cache.endsWith(robot_res.fileName)) {
-            $d.l(robot+ ' robot returned wrong file name, requested: ', path_cache);
-            return res.sendStatus(404); // not found
-        }
-
-        try {
-            await fs.promises.access(path_cache, fs.constants.R_OK);
-            return res.sendFile(path_cache, {}, function (err) {
-                try {
-                    if (err) {
-                        $d.e('Error seding cached file '+path_cache, err);
-                        return res.sendStatus(500); // internal server error
-                    }
-                } catch (err1) {
-                    $d.l('Exception caught and ignored', err1);
-                }
-            });
-
-        } catch (err) {
-            $d.l(fname_cache+' not found in server cache');
-            return res.sendStatus(404); // not found
-        }
-
-        // if (FILES_CACHE_DIR) {
-        //     $d.l('  caching into '+path_cache);
-        //     fs.open(path_cache, 'w', null, (err:any, fd:any)=>{
-        //         if (err) {
-        //             $d.e('Failed to open cache file for writing: '+path_cache);
-        //             return;
-        //         }
-        //         fs.write(fd, robot_res, null, (err:any, bytesWritten:number) => {
-        //             if (err) {
-        //                 $d.e('Failed to write cache file: '+err);
-        //             }
-        //             fs.closeSync(fd)
-        //         });
-        //     });
-        // }
-        
-        // return res.send(robot_res)
-    });
-});
+files_express.get('/:ID_ROBOT/:MT_HASH/:FILE_URL', serveFile);
+files_express.get(FILES_CDN_PATH_PREFIX + '/:ID_ROBOT/:MT_HASH/:FILE_URL', serveFile); // CDN version
 
 function auth_admin(req:any) {
     const authorization = req.headers.authorization;
@@ -317,6 +240,11 @@ function auth_admin(req:any) {
 
     return true;
 }
+
+files_express.all('*', (req:any, res:any) => {
+  console.log('Unhandled URL:', req.originalUrl);
+  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
+});
 
 function reject(res:any) {
     res.setHeader("www-authenticate", "Basic");
@@ -441,35 +369,99 @@ bridge_express.get('/info', function(req: any, res: any) {
     res.send(JSON.stringify(info_data, null, 4));
 });
 
+register_express.use(express.urlencoded({ extended: true }));
 register_express.use(express.json());
+
+register_express.get('/register.sh', (req:any, res:any) => {
+  res.sendFile(path.join(__dirname, '..', 'register.sh'));
+});
 
 register_express.get('/', async function(req:express.Request, res:express.Response) {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4));
+    res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4)); // useful for geo-balancing debugging 
 });
 
 // register a new robot, then forward to config
-register_express.get('/robot', async function(req:express.Request, res:express.Response) {
+register_express.post('/register/robot', async function(req:express.Request, res:express.Response) {
 
-    // return default config for robot id + key pair
-    if (req.query.id !== undefined || req.query.key !== undefined) {
-        let robotUIAddress = UI_ADDRESS_PREFIX + req.query.id as string;
-        return await Robot.GetDefaultConfig(req, res, 
-            robots_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT,
-            robotUIAddress,
-            DEFAULT_MAINTAINER_EMAIL);
+    // validate email
+    let maintainer_email:string = req.body['maintainer_email'];
+    try {
+        const email_legit = await legit(maintainer_email);
+        if (!email_legit.isValid) {
+            console.log('Maintainer\'s email is invalid: ' + maintainer_email);
+            return ErrOutText('Invalid email provided: ' + maintainer_email, res, 400);
+        }
+    } catch (e) {
+        console.log('Maintainer\'s email is invalid: ' + maintainer_email);
+        return ErrOutText('Invalid email provided: ' + maintainer_email, res, 400);
     }
-    
-    // return default config for new robot
+
+    // returns default config for the new robot
     return await Robot.Register(
-        req, res, new ObjectId().toString(), //new key generated here
-        robots_collection,
-        PUBLIC_BRIDGE_ADDRESS,
+        req, res,
+        maintainer_email,
+        robots_collection, PUBLIC_BRIDGE_ADDRESS,
         ICE_SYNC_SERVERS,
         ICE_SYNC_PORT,
         ICE_SYNC_SECRET,
-        UI_ADDRESS_PREFIX, GSQ
+        BRIDGE_SIO_PORT, UI_ADDRESS_PREFIX, EMAIL_SENDER, ses_client,
+        GSQ
+    );
+});
+
+// register new app
+register_express.post('/register/app', async function(req:express.Request, res:express.Response) {
+
+    // validate email
+    let maintainer_email:string = req.body['maintainer_email'];
+    try {
+        const email_legit = await legit(maintainer_email);
+        if (!email_legit.isValid) {
+            console.log('Maintainer\'s email is invalid: ' + maintainer_email);
+            return ErrOutText('Invalid email provided: ' + maintainer_email, res, 400);
+        }
+    } catch (e) {
+        console.log('Maintainer\'s email is invalid: ' + maintainer_email);
+        return ErrOutText('Invalid email provided: ' + maintainer_email, res, 400);
+    }
+
+    // register new app, sets name from ?name=
+    return PeerApp.Register(
+        req, res, maintainer_email,
+        apps_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT
+    );
+});
+
+// GET - return default config for robot
+register_express.get('/config/robot/:FORMAT/:ID_ROBOT/:KEY', async function(req:express.Request, res:express.Response) {
+    if (!req.params.ID_ROBOT || !req.params.KEY) {
+        return ErrOutText('Missing robot credentials', res, 403);
+    }
+    if (!req.params.ID_ROBOT || !ObjectId.isValid(req.params.ID_ROBOT as string) || !req.params.KEY) {
+        $d.err('Invalid id_robot provided in GetDefaultConfig: '+req.params.ID_ROBOT);
+        return ErrOutText('Access denied, invalid robot credentials', res, 403);
+    }
+    return await Robot.GetDefaultConfig(req, res,
+        req.params.ID_ROBOT, req.params.KEY, req.params.FORMAT,
+        robots_collection, PUBLIC_BRIDGE_ADDRESS,
+        BRIDGE_SIO_PORT, UI_ADDRESS_PREFIX
+    );
+});
+
+// GET - return default config for app
+register_express.get('/config/app/:ID_APP/:KEY', async function(req:express.Request, res:express.Response) {
+    if (!req.params.ID_APP|| !req.params.KEY) {
+        return ErrOutText('Missing app credentials', res, 403);
+    }
+    if (!req.params.ID_APP || !ObjectId.isValid(req.params.ID_APP as string) || !req.params.KEY) {
+        $d.err('Invalid id_app provided in GetDefaultConfig: '+req.params.ID_APP);
+        return ErrOutText('Access denied, invalid app credentials', res, 403);
+    }
+    return await PeerApp.GetDefaultConfig(req, res,
+        req.params.ID_APP, req.params.KEY,
+        apps_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT
     );
 });
 
@@ -524,21 +516,12 @@ register_express.post('/locate', async function(req:express.Request, res:express
     });
 });
 
-// register new app
-register_express.get('/app', async function(req:express.Request, res:express.Response) {
 
-    //return defaults for existing app
-    if (req.query.id !== undefined || req.query.key !== undefined) { 
-        return PeerApp.GetDefaultConfig(req, res, 
-            apps_collection, PUBLIC_BRIDGE_ADDRESS, BRIDGE_SIO_PORT);
-    }
-
-    // register new app, sets name from ?name=
-    return PeerApp.Register(
-        req, res, new ObjectId().toString(), //new key generated here
-        apps_collection
-    );
+register_express.all('*', (req:any, res:any) => {
+  console.log('Unhandled URL:', req.originalUrl);
+  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
+
 
 const mongo_client = new MongoClient(DB_URL);
 mongo_client.connect().then((client:MongoClient) => {
@@ -610,7 +593,8 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         robot_socket.db_data._id,
         robot_socket,
         robot_socket.handshake.auth.name ? robot_socket.handshake.auth.name : (robot_socket.db_data.name ? robot_socket.db_data.name : 'Unnamed Robot'),
-        robot_socket.handshake.auth.maintainer_email == DEFAULT_MAINTAINER_EMAIL ? '' : robot_socket.handshake.auth.maintainer_email,
+        robot_socket.handshake.auth.maintainer_email,
+        robot_socket.db_data.last_email_link_sent,
         robot_socket.handshake.auth.peer_limit,
         robot_socket.handshake.auth.ros_distro,
         robot_socket.handshake.auth.rmw_implementation,
@@ -632,24 +616,13 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
     let disconnect_event:number = Robot.LOG_EVENT_DISCONNECT;
 
     // send email on maintainer_email or robot name change
-    if (robot.maintainer_email != robot_socket.db_data.maintainer_email || robot.name != robot_socket.db_data.name) {
-        if (robot.maintainer_email) {
-            $d.log('Robot name or maintainer\'s e-mail of ' + robot + ' changed, sending link...');
-            let subject = robot.name + ' on Phantom Bridge';
-            let body = 'Hello,\n' +
-                       '\n' +
-                       'Your robot '+robot.name+' is available at:\n' +
-                       '\n' +
-                       UI_ADDRESS_PREFIX + robot.id.toString() + '\n' +
-                       '\n' +
-                       'Read the docs here: https://docs.phntm.io/bridge' + '\n' +
-                       '\n' +
-                       '- Phantom Bridge';
-            SendEmail(robot.maintainer_email, subject, body, EMAIL_SENDER, sesClient);
-        }
+    if (robot.maintainer_email && (robot.maintainer_email != robot.last_email_link_sent || robot.name != robot_socket.db_data.name)) {
+        SendEmail_UI_Link(robot.id.toString(), robot.name, robot.maintainer_email,
+                          UI_ADDRESS_PREFIX, EMAIL_SENDER, ses_client);
+        robot.last_email_link_sent = robot.maintainer_email; // saved in updateDbLogConnect()
     }
 
-    // robot first connected
+    // log robot first connect
     if (!robot_socket.db_data.last_connected && GSQ) {
         const response = await fetch('https://api.gosquared.com/tracking/v1/event?api_key='+GSQ.api_key+'&site_token='+GSQ.site_token, {
             method: 'POST',
@@ -1287,6 +1260,277 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
         return true;
     });
 
+    peer_app_socket.on('robot-file-url', async function (data:{ id_robot:string, path:string}, return_callback) {
+
+        $d.log(peer_app + ' requesting robot file url for :', data);
+
+        if (!data.id_robot || !ObjectId.isValid(data.id_robot)) {
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Invalid robot id '+data.id_robot
+                });
+            }
+            return false;
+        }
+        let robot = Robot.FindConnected(new ObjectId(data.id_robot));
+        if (!robot || !robot.connected_peers[peer_app.id.toString()]) {
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Robot not connected'
+                });
+            }
+            return false;
+        }
+
+        if (!data.path) {
+             if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'File path not specified'
+                });
+            }
+            return false;
+        }
+
+        if (!FILES_CACHE_DIR)  {
+            $d.e('Files chache dir not set');
+            if (return_callback) {
+                return_callback({
+                    'err': 1,
+                    'msg': 'Files chache dir not set'
+                });
+            }
+            return false;
+        }
+
+        let fname_cache = GetCachedFileName(data.path);
+        let path_cache = FILES_CACHE_DIR+'/'+robot.id.toString()+'/'+fname_cache;
+
+        try {
+
+            await fs.promises.access(path_cache, fs.constants.R_OK);
+            const stats = fs.statSync(path_cache);
+            $d.l(path_cache+' found in cache, last modified: ' + stats.mtime.toUTCString());
+            if (return_callback) {
+                return_callback({
+                    'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, FILES_CDN_PREFIX) 
+                });
+            }
+            return true;
+
+        } catch (err) {
+            $d.l(fname_cache+' not found in server cache');
+
+            try { // check if robot cache folder exists
+                await fs.promises.access(FILES_CACHE_DIR+'/'+robot.id.toString(), fs.constants.R_OK | fs.constants.W_OK);
+            } catch (err1:any) {
+                try {
+                    $d.l('Creating cache dir: '+FILES_CACHE_DIR+'/'+robot.id.toString());
+                    await fs.promises.mkdir(FILES_CACHE_DIR+'/'+robot.id.toString(), { recursive: false });
+                } catch (err2:any) {
+                    if (err2 && err2.code != 'EEXIST') { // created since first check
+                        $d.e('Failed to create cache dir: '+FILES_CACHE_DIR+'/'+robot.id.toString(), err2);
+                        if (return_callback) {
+                            return_callback({
+                                'err': 1,
+                                'msg': 'Failed to create cache dir'
+                            });
+                        }
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // fetch the file from robot...
+        
+        if (!robot.extracting_files_in_the_fly[data.path])
+            robot.extracting_files_in_the_fly[data.path] = [];
+        robot.extracting_files_in_the_fly[data.path].push(return_callback);
+        if (robot.extracting_files_in_the_fly[data.path].length > 1) {
+            $d.l('Already extracting file ' + data.path + ', saving duplicate request');
+            return;
+        }
+
+        $d.l('Extracting file ' + data.path + ' from robot... ');
+
+        return robot.socket.emit('file', data.path, async (robot_res:any) => {
+
+            if (!robot_res || robot_res.err || !robot_res.fileName) {
+                $d.e(robot + ' returned error... ', robot_res);
+                if (return_callback) { // only reply once
+                    let err_result:any = {
+                        'err': 2,
+                    };
+                    if (robot_res.msg)
+                        err_result['msg'] = robot_res.msg;
+                    if (robot_res.msgs)
+                        err_result['msgs'] = robot_res.msgs;
+                    return_callback(err_result);
+                }
+                delete robot.extracting_files_in_the_fly[data.path];
+                return false
+            }
+
+            $d.l((robot + ' uploaded file '+robot_res.fileName).cyan);
+
+            if (!path_cache.endsWith(robot_res.fileName)) {
+                $d.l(robot+ ' robot returned wrong file name, requested: ', path_cache);
+                if (return_callback) { // only reply once
+                    return_callback({
+                        'err': 2,
+                        'msg': 'Robot returned wrong file name'
+                    });
+                }
+                delete robot.extracting_files_in_the_fly[data.path];
+                return false;
+            }
+
+            try {
+                await fs.promises.access(path_cache, fs.constants.R_OK);
+                $d.l(path_cache+' is now in cache');
+
+                let extra_err_msgs:any = {}; // exrta errors from DAE parsing
+
+                const finishRequest = function (){
+                    const stats = fs.statSync(path_cache);
+                    let res:any = { 'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, FILES_CDN_PREFIX) };
+                    if (Object.keys(extra_err_msgs).length) {
+                        res['err'] = 3; // embedded resources error
+                        res['msgs'] = extra_err_msgs;
+                    }
+                    robot.extracting_files_in_the_fly[data.path].forEach((request_return_callback)=>{ // send all replies
+                        request_return_callback(res);
+                        if (res['err']) { // silence error notifications for further replies
+                            res['err'] = -1; // UI will ignore this
+                            delete res['msgs'];
+                            delete res['msg'];
+                        }
+                    });
+                    delete robot.extracting_files_in_the_fly[data.path];
+                }
+
+                // parse collada (.dae) and look for references to external files
+                // if found, request, upload and replace with server's url
+                let waiting_for_dae_sources = false;
+                if (path_cache.toLowerCase().endsWith('.dae')) {
+                    $d.l("Collada file detected, checking for external file links");
+                    
+                    //let dae_changed = false;
+                    let dae_content = fs.readFileSync(path_cache, 'utf-8');
+                    let dae_content_changed = false;
+
+                    const finishDaeEditing = function() {
+                        if (!dae_content_changed)
+                            return;
+                        fs.writeFileSync(path_cache, dae_content, 'utf-8');
+                        $d.l(path_cache+' updated after DAE changes');
+                    }
+
+                    const xml_parser = new XMLParser();
+                    const dae_obj = xml_parser.parse(dae_content);
+                    if (dae_obj.COLLADA?.library_images?.image) {
+                        const images = Array.isArray(dae_obj.COLLADA.library_images.image) 
+                                     ? dae_obj.COLLADA.library_images.image 
+                                     : [ dae_obj.COLLADA.library_images.image ];
+
+                        let sources_to_replace:any = {};
+                        images.forEach((img:any) => {
+                            if (img.init_from && !img.init_from.hex) { // ignore embedded hex data
+                                let src_to_replace = img.init_from;
+                                $d.l('Found source to replace in DAE: "' + src_to_replace + '"');
+                                if (src_to_replace.startsWith('http:/') || src_to_replace.startsWith('https:/'))
+                                    return; // keep source as is
+                                
+                                if (sources_to_replace[src_to_replace])
+                                    return; // skip duplicates
+                                sources_to_replace[src_to_replace] = true;
+
+                                let src_to_request = src_to_replace;
+                                if (!src_to_replace.startsWith('package:/') && !src_to_replace.startsWith('file:/') && !src_to_replace.startsWith('/')) {
+                                    // resolve path
+                                    const base = data.path.slice(0, data.path.lastIndexOf('/')+1);
+                                    src_to_request = base + src_to_replace;
+                                }
+
+                                $d.l('Requesting extraction for DAE source: "' + src_to_request + '"');
+                                
+                                waiting_for_dae_sources = true;
+                                robot.socket.emit('file', src_to_request, async (src_robot_res:any) => {
+
+                                    if (!src_robot_res || src_robot_res.err || !src_robot_res.fileName) {
+                                        $d.e(robot + ' returned error for DAE source... ', src_robot_res);
+                                        extra_err_msgs[img.init_from] = {};
+                                        if (src_robot_res.msg)
+                                            extra_err_msgs[img.init_from]['msg'] = src_robot_res.msg;
+                                        else
+                                            extra_err_msgs[img.init_from]['msg'] = "Error fetching embedded resource";
+                                        if (src_robot_res.msgs)
+                                            extra_err_msgs[img.init_from]['msgs'] = src_robot_res.msgs;
+
+                                        delete sources_to_replace[src_to_replace];
+                                        if (!Object.keys(sources_to_replace).length) {
+                                            finishDaeEditing();
+                                            finishRequest();
+                                        }
+                                        return;
+                                    }
+
+                                    $d.l((robot + ' uploaded src file '+src_robot_res.fileName).cyan);
+
+                                    let src_path_cache = FILES_CACHE_DIR+'/'+robot.id.toString()+'/'+src_robot_res.fileName;;
+                                    try {
+                                        
+                                        await fs.promises.access(src_path_cache, fs.constants.R_OK);
+
+                                        // only use genrated filename, the base url used when fetching is the same as the DAE itself
+                                        dae_content = dae_content.replaceAll(img.init_from, src_robot_res.fileName); 
+                                        dae_content_changed = true;
+
+                                        delete sources_to_replace[src_to_replace];
+                                        if (!Object.keys(sources_to_replace).length) {
+                                            finishDaeEditing();
+                                            finishRequest();
+                                        }
+                                    } catch (err) {
+                                        $d.l(src_robot_res.fileName+' not found in server cache');
+                                        extra_err_msgs[img.init_from] = {
+                                            "msg": "File not found in server cache"
+                                        };
+                                        delete sources_to_replace[src_to_replace];
+                                        if (!Object.keys(sources_to_replace).length) {
+                                            finishDaeEditing();
+                                            finishRequest();
+                                        }
+                                    }
+
+                                });
+                            }
+                        });
+                    }
+                } // dae end
+
+                if (!waiting_for_dae_sources) {
+                    finishRequest();
+                }
+            
+                return true;
+            } catch (err) {
+                $d.l(fname_cache+' not found in server cache');
+                if (return_callback) { // only reply once
+                    return_callback({
+                        'err': 2,
+                        'msg': 'File uploaded but not found in server cache'
+                    });
+                }
+                delete robot.extracting_files_in_the_fly[data.path];
+                return false;
+            }
+        });
+    });
+
     /*
      * client disconnected
      */
@@ -1343,7 +1587,7 @@ process.on('uncaughtException', (err:any) => {
     }
 } );
 
-['SIGINT', 'SIGTERM', 'SIGQUIT' ]
+[ 'SIGINT', 'SIGTERM', 'SIGQUIT' ]
   .forEach(signal => process.on(signal, () => {
     _Clear();
     ShutdownWhenClear();

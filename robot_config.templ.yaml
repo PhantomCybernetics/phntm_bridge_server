@@ -12,10 +12,10 @@
   ros__parameters:
     id_robot: %ROBOT_ID%
     key: %ROBOT_KEY%
-    name: 'Unnamed Robot'
+    name: '%ROBOT_NAME%'
     maintainer_email: '%MAINTAINER_EMAIL%' # e-mail for service announcements
     
-    bridge_server_address: %CLOUD_BRIDGE_ADDRESS% # Cloud Bridge to connect to, see https://docs.phntm.io/bridge/availability-zones
+    bridge_server_address: %BRIDGE_SERVER_ADDRESS% # Bridge Server to connect to, see https://docs.phntm.io/bridge/availability-zones
 
     log_sdp: True # verbose WebRTC debug
 

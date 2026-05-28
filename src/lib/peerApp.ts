@@ -160,15 +160,17 @@ export class PeerApp {
         return null;
     }
 
-    static Register(req:express.Request, res:express.Response, set_password:string, apps_collection:Collection) {
+    static Register(req:express.Request, res:express.Response, maintainer_email:string, apps_collection:Collection, public_address:string, sio_port:number) {
         let remote_ip:string = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
         const salt_rounds = 10;
-        let app_name = req.query.name !== undefined ? req.query.name : undefined;
+        let app_name = req.body['name'];
+        let new_key = new ObjectId().toString(); //new key generated here;
+
         bcrypt.genSalt(salt_rounds, async function (err:any, salt:string) {
-            if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res ); }
+            if (err) { $d.err('Error while generating salt'); return ErrOutText( 'Error while registering', res, 500 ); }
     
-            bcrypt.hash(set_password, salt, null, async function (err:any, hash:string) {
-                if (err) { $d.err('Error while hashing password'); return ErrOutText( 'Error while registering', res ); }
+            bcrypt.hash(new_key, salt, null, async function (err:any, hash:string) {
+                if (err) { $d.err('Error while hashing password'); return ErrOutText( 'Error while registering', res, 500 ); }
     
                 let date_registered = new Date();
     
@@ -176,63 +178,50 @@ export class PeerApp {
                     name: app_name,
                     registered: date_registered,
                     reg_ip: remote_ip,
-                    key_hash: hash
+                    key_hash: hash,
+                    maintainer_email: maintainer_email
                 });
     
-                $d.l(('Registered new app type '+app_reg.insertedId.toString()+' from '+remote_ip).yellow);
+                $d.l(('Registered new app ID '+app_reg.insertedId.toString()+' from '+remote_ip).yellow);
 
-                return res.redirect('/app?id='+app_reg.insertedId.toString()+'&key='+set_password);
-
-                // let new_config:any = {
-                //     appId: appReg.insertedId.toString(),
-                //     appKey: setPassword
-                // };
-    
-                // res.setHeader('Content-Type', 'application/json');
-                // res.send(JSON.stringify(new_config, null, 4));
-                // return;
-    
+                return PeerApp.GetDefaultConfig(req, res, app_reg.insertedId.toString(), new_key, apps_collection, public_address, sio_port);
             });
         });
     }
 
-    static async GetDefaultConfig(req:express.Request, res:express.Response, appsCollection:Collection, publicAddress:string, sioPort:number) {
+    static async GetDefaultConfig(req:express.Request, res:express.Response, id_app:string, key:string,
+                                  apps_collection:Collection, public_address:string, sio_port:number) {
     
-        if (!req.query.id || !ObjectId.isValid(req.query.id as string) || !req.query.key) {
-            $d.err('Invalidid id_robot provided: ' + req.query.id)
-            res.status(403);
-            return res.send('Access denied, invalid credentials');
+        if (!id_app || !ObjectId.isValid(id_app) || !key) {
+            $d.err('Invalidid id_app provided: ' + id_app)
+            return ErrOutText('Access denied, invalid app credentials', res, 403);
         }
     
-        let searchId = new ObjectId(req.query.id as string);
-        const dbApp = (await appsCollection.findOne({_id: searchId }));
+        let search_id = new ObjectId(id_app);
+        const db_app = (await apps_collection.findOne({_id: search_id }));
     
-        if (dbApp) {
-            bcrypt.compare(req.query.key, dbApp.key_hash, function(err:any, passRes:any) {
-                if (passRes) { //pass match => good
+        if (db_app) {
+            bcrypt.compare(key, db_app.key_hash, function(err:any, pass_res:any) {
+                if (pass_res) { //pass match => good
                     
-                    // $d.l(dbApp);
                     res.setHeader('Content-Type', 'application/json');
                     return res.send(JSON.stringify({
-                        id_app: dbApp._id.toString(),
-                        name: dbApp.name,
-                        key: req.query.key,
-                        sio_address: publicAddress,
+                        id_app: db_app._id.toString(),
+                        app_name: db_app.name,
+                        key: key,
+                        maintainer_email: db_app.maintainer_email,
+                        sio_address: public_address,
                         sio_path: '/app/socket.io',
-                        sio_port: sioPort,
+                        sio_port: sio_port
                     }, null, 4));
     
                 } else { //invalid key
-                    res.status(403);
-                    return res.send('Access denied, invalid credentials');
+                    return ErrOutText('Access denied, invalid app credentials', res, 403);
                 }
             });
-    
         } else { //robot not found
-            res.status(403);
-            return res.send('Access denied, invalid credentials');
+            return ErrOutText('Access denied, invalid app credentials', res, 403);
         }
-    
     }
 
 }

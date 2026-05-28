@@ -9,8 +9,9 @@ const crypto = require('crypto');
 
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
-export function ErrOutText(msg:string, res: any) {
+export function ErrOutText(msg:string, res: any, status:number=500) {
     res.setHeader('Content-Type', 'text/plain');
+    res.status(status);
     res.send(msg);
 }
 
@@ -55,9 +56,20 @@ export function GetCachedFileName(file_url:string) : string{
     return hash+'-'+base;
 }
 
+export async function SendEmail_UI_Link(robot_id:string, robot_name:string, maintainer_email:string, ui_address_prefix:string, sender:string, sesClient:SESClient) {
+  $d.log('Sending link to robot ' + robot_id + ' to '+ maintainer_email +'...');
+  let subject = robot_name + ' on Phantom Bridge';
+  let body = 'Hello,\n\n' +
+              'Your robot '+robot_name+' is available at:\n\n' +
+              ui_address_prefix + robot_id + '\n\n' +
+              'Read the docs here: https://docs.phntm.io/bridge' + '\n\n' +
+              '- Phantom Bridge';
+  SendEmail(maintainer_email, subject, body, sender, sesClient);
+}
+
 export async function SendEmail(to: string, subject: string, body: string, sender:string, ses_client:SESClient) {
     const params = {
-        Destination: { ToAddresses: [to] },
+        Destination: { ToAddresses: [ to ] },
         Message: {
             Body: { Text: { Data: body } },
             Subject: { Data: subject },
@@ -81,5 +93,41 @@ export function GetDomainName(url: string): string | null {
   } catch (error) {
     console.error("Invalid URL:", error);
     return null;
+  }
+}
+
+export function HashString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;  // 32‑bit signed
+  }
+  return ((hash >>> 0).toString(16)).padStart(8, "0"); // convert to 8‑char hex (0–9A–F only)
+}
+
+export function GetRobotFilePublicUrl(fname_cache:string, mtime:any, id_robot: ObjectId, public_bridge_address:string, files_port:number, cdn_prefix:string):string {
+    const mt_hash = HashString(mtime.toUTCString());
+    if (cdn_prefix)
+      return cdn_prefix + '/' + id_robot.toString() + '/' + mt_hash + '/' + fname_cache;
+    else
+      return public_bridge_address + ':' + files_port + '/' + id_robot.toString() + '/' + mt_hash + '/' + fname_cache;
+}
+
+export function FormatBytes(b: number, mib = false): string {
+  const unit = mib ? 1024 : 1000;
+  const GB = unit * unit * unit;
+  const MB = unit * unit;
+  const KB = unit;
+
+  if (b > GB) {
+    return `${(b / GB).toFixed(2)}${mib ? "GiB" : "GB"}`;
+  } else if (b > MB) {
+    return `${(b / MB).toFixed(2)}${mib ? "MiB" : "MB"}`;
+  } else if (b > KB) {
+    return `${(b / KB).toFixed(2)}${mib ? "KiB" : "KB"}`;
+  } else if (b > 0) {
+    return `${b.toFixed(2)}B`;
+  } else {
+    return `0B`;
   }
 }
