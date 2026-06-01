@@ -1364,9 +1364,9 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                     let err_result:any = {
                         'err': 2,
                     };
-                    if (robot_res.msg)
+                    if (robot_res && robot_res.msg)
                         err_result['msg'] = robot_res.msg;
-                    if (robot_res.msgs)
+                    if (robot_res && robot_res.msgs)
                         err_result['msgs'] = robot_res.msgs;
                     return_callback(err_result);
                 }
