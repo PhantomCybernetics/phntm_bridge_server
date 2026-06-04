@@ -619,7 +619,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
     if (robot.maintainer_email && (robot.maintainer_email != robot.last_email_link_sent || robot.name != robot_socket.db_data.name)) {
         SendEmail_UI_Link(robot.id.toString(), robot.name, robot.maintainer_email,
                           UI_ADDRESS_PREFIX, EMAIL_SENDER, ses_client);
-        robot.last_email_link_sent = robot.maintainer_email; // saved in updateDbLogConnect()
+        robot.last_email_link_sent = robot.maintainer_email; // saved in logConnect()
     }
 
     // log robot first connect
@@ -662,7 +662,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         finishConnect();
     }
 
-    robot.updateDbLogConnect(robots_collection, robot_logs_collection, PUBLIC_BRIDGE_ADDRESS);
+    await robot.logConnect(robots_collection, robot_logs_collection, PUBLIC_BRIDGE_ADDRESS, GSQ);
 
     robot_socket.on('peer:update', async function(update_data:any, return_callback:any) {
 
@@ -822,14 +822,14 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
     /*
      * client disconnected
      */
-    robot_socket.on('disconnect', (data:any) => {
+    robot_socket.on('disconnect', async (data:any) => {
 
         $d.l(('Socket disconnect for ' + robot + ': '+data).red);
         robot.is_authentificated = false;
         robot.is_connected = false;
         robot.topics = [];
         robot.services = [];
-        robot.logDisconnect(robots_collection, robot_logs_collection, disconnect_event, () => {
+        await robot.logDisconnect(robots_collection, robot_logs_collection, disconnect_event, GSQ, () => {
             robot.ip = null;
             robot.removeFromConnected(!shutting_down);
         });

@@ -60,6 +60,10 @@ export class Robot {
     verbose_peers:boolean;
     verbose_input_locks: boolean;
 
+    log_ping_timer:any;
+    log_ping_page_index:number = -1;
+    static LOG_PING_DELAY:number = 20000;
+
     static LOG_EVENT_CONNECT: number = 1;
     static LOG_EVENT_DISCONNECT: number = 0;
     static LOG_EVENT_ERR: number = -1;
@@ -106,6 +110,8 @@ export class Robot {
         this.verbose_input_locks = verbose_input_locks;
         this.input_topic_locks = {};
         this.extracting_files_in_the_fly = {};
+        this.log_ping_timer = null;
+        this.log_ping_page_index = -1;
     }
 
     toString() : string {
@@ -450,8 +456,9 @@ export class Robot {
         }
     }
 
-    public updateDbLogConnect(robots_collection:Collection, robot_logs_collection:Collection, public_bridge_address:string):void {
+    public async logConnect(robots_collection:Collection, robot_logs_collection:Collection, public_bridge_address:string, gosquared:any) {
 
+        // update the db record
         robots_collection.updateOne({_id: this.id},
                                     { $set: {
                                         name: this.name,
@@ -468,7 +475,8 @@ export class Robot {
                                         ui_custom_includes_js: this.ui_custom_includes_js,
                                         ui_background_disconnect_sec: this.ui_background_disconnect_sec
                                     }, $inc: { total_sessions: 1 } });
-
+        
+        // log connect event 
         robot_logs_collection.insertOne({
             id: this.id,
             stamp: this.time_connected,
@@ -476,11 +484,110 @@ export class Robot {
             ip: this.socket.handshake.address
         });
 
+        // log into gsq
+        if (gosquared) {
+            const bridge_server_title = public_bridge_address.replace('https://', '').replace('http://', '').replace('/', '');
+            const ip_to_log = this.socket.handshake.address.replace('::ffff:', '').replace(':', '').trim();
+            const version = this.git_sha ? this.git_sha.slice(0, 7) : 'n/a';
+
+            try {
+                const response_pv = await fetch('https://api.gosquared.com/tracking/v1/pageview?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        'visitor_id': this.id.toHexString(),
+                        'user_agent': this.ros_distro + ' / ' + version  + ' '+this.rmw_implementation+'',
+                        'returning': true,
+                        'ip': ip_to_log,
+                        'page': {
+                            'url': public_bridge_address + ':1337/info',
+                            'title': '[Robot API @ ' + bridge_server_title + ']'
+                        }
+                    })
+                });
+                const response_pv_rata:any = await response_pv.json();
+                if (!response_pv_rata.success) {
+                    $d.err('Got error from GSQ "pageview" event: ', response_pv_rata);
+                } else {
+                    this.log_ping_page_index = response_pv_rata.index;
+                    this.log_ping_timer = setTimeout(async () => { await this.logPing(gosquared ) }, Robot.LOG_PING_DELAY);
+                }
+                
+                const response_id = await fetch('https://api.gosquared.com/tracking/v1/properties?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        'visitor_id': this.id.toHexString(),
+                        'person_id': this.id.toHexString(),
+                        'properties': {
+                            'name': this.name + ' @ ' + this.ros_distro + '/' + version + '',
+                            'custom': {
+                                'ros_distro': this.ros_distro,
+                                'client_version': version,
+                                'rmw_implementation': this.rmw_implementation,
+                                'maintainer': this.maintainer_email
+                            }
+                        }
+                    })
+                });
+                const response_id_rata:any = await response_id.json();
+                if (!response_id_rata.success) {
+                    $d.err('Got error from GSQ "identify" event: ', response_id_rata);
+                }
+
+            } catch (error:any) {
+                 $d.err('Got exception during GSQ logging: ', error);
+            }
+        }
     }
 
-    public logDisconnect(robots_collection:Collection, robot_logs_collection:Collection, ev:number = Robot.LOG_EVENT_DISCONNECT, cb?:any):void {
+    public async logPing(gosquared:any) {
+        const response_id = await fetch('https://api.gosquared.com/tracking/v1/ping?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                'visitor_id': this.id.toHexString(),
+                'page': {
+                    'index': this.log_ping_page_index,
+                }
+            })
+        });
+        const response_id_rata:any = await response_id.json();
+        if (!response_id_rata.success) {
+            $d.err('Got error from GSQ "ping" event: ', response_id_rata);
+        } else {
+            this.log_ping_timer = setTimeout(async () => { await this.logPing(gosquared ) }, Robot.LOG_PING_DELAY);
+        }
+    }
+
+    public async logDisconnect(robots_collection:Collection, robot_logs_collection:Collection, ev:number = Robot.LOG_EVENT_DISCONNECT, gosquared:any, cb?:any) {
+
+        // log into gsq
+        if (gosquared) {
+            if (this.log_ping_timer) {
+                clearTimeout(this.log_ping_timer);
+                this.log_ping_timer = null;
+            }
+            const response_id = await fetch('https://api.gosquared.com/tracking/v1/timeout?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    'visitor_id': this.id.toHexString(),
+                    'page': {
+                        'index': this.log_ping_page_index,
+                    }
+                })
+            });
+            this.log_ping_page_index = -1;
+            const response_id_rata:any = await response_id.json();
+            if (!response_id_rata.success) {
+                $d.err('Got error from GSQ "timeout" event: ', response_id_rata);
+            }
+        }
 
         let num_tasks = 2;
+
+        // inc total robot connected time
         let now:Date = new Date();
         let session_length_min:number = Math.abs(now.getTime() - this.time_connected.getTime())/1000.0/60.0;
         robots_collection.updateOne({_id: this.id},
@@ -489,7 +596,8 @@ export class Robot {
                                         num_tasks--;
                                         if (!num_tasks && cb) return cb();
                                     });
-
+        
+        // log disconnect event
         robot_logs_collection.insertOne({
             id: this.id,
             stamp: new Date(),
