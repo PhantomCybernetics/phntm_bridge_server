@@ -489,18 +489,21 @@ export class Robot {
             const bridge_server_title = public_bridge_address.replace('https://', '').replace('http://', '').replace('/', '');
             const ip_to_log = this.socket.handshake.address.replace('::ffff:', '').replace(':', '').trim();
             const version = this.git_sha ? this.git_sha.slice(0, 7) : 'n/a';
-
+            const user_agent = 'Phntm Client/'+version+' (ROS2; '+this.ros_distro+') '+this.rmw_implementation+'';
             try {
                 const response_pv = await fetch('https://api.gosquared.com/tracking/v1/pageview?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': user_agent
+                    },
                     body: JSON.stringify({
                         'visitor_id': this.id.toHexString(),
-                        'user_agent': this.ros_distro + ' / ' + version  + ' '+this.rmw_implementation+'',
+                        'user_agent': user_agent,
                         'returning': true,
                         'ip': ip_to_log,
                         'page': {
-                            'url': public_bridge_address + ':1337/info',
+                            'url': public_bridge_address,
                             'title': '[Robot API @ ' + bridge_server_title + ']'
                         }
                     })
@@ -515,7 +518,10 @@ export class Robot {
                 
                 const response_id = await fetch('https://api.gosquared.com/tracking/v1/properties?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': user_agent
+                    },
                     body: JSON.stringify({
                         'visitor_id': this.id.toHexString(),
                         'person_id': this.id.toHexString(),
