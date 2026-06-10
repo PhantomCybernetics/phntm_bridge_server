@@ -69,6 +69,7 @@ export class Robot {
     static LOG_EVENT_ERR: number = -1;
 
     extracting_files_in_the_fly: { [ path: string]: any[] } = {};
+    edited_files_in_the_fly: { [ path: string]: boolean } = {};
 
     introspection: boolean;
 
@@ -110,6 +111,7 @@ export class Robot {
         this.verbose_input_locks = verbose_input_locks;
         this.input_topic_locks = {};
         this.extracting_files_in_the_fly = {};
+        this.edited_files_in_the_fly = {};
         this.log_ping_timer = null;
         this.log_ping_page_index = -1;
     }
@@ -257,6 +259,25 @@ export class Robot {
                 });
             }
         }
+    }
+
+    // delete unfinished DAE files waiting for sources
+    // so that we can re-fetch and process them again on new request
+    public clearEditedFiles() : void {
+        let paths = Object.keys(this.edited_files_in_the_fly);
+        paths.forEach((cache_path:string)=>{
+            try {
+                fs.unlink(cache_path, (err:any) => {
+                    if (err)
+                        $d.e('Error deleting incomplete robot file '+cache_path, err);
+                    else
+                        $d.l('Deleted incomplete robot file '+cache_path);
+                });
+            } catch (err) {
+                $d.e('Error deleting incomplete robot file '+cache_path, err);
+            }
+        });
+        this.edited_files_in_the_fly = {};
     }
 
     public getStateData(data:any=null) : any {
@@ -456,7 +477,7 @@ export class Robot {
         }
     }
 
-    public async logConnect(robots_collection:Collection, robot_logs_collection:Collection, public_bridge_address:string, gosquared:any) {
+    public async logConnect(robots_collection:Collection, robot_logs_collection:Collection, gosquared:any) {
 
         // update the db record
         robots_collection.updateOne({_id: this.id},
@@ -464,7 +485,7 @@ export class Robot {
                                         name: this.name,
                                         maintainer_email: this.maintainer_email,
                                         last_email_link_sent: this.last_email_link_sent,
-                                        bridge_server: public_bridge_address, // save current instance for /locate
+                                        bridge_server: gosquared.public_bridge_address, // save current instance for /locate
                                         ros_distro: this.ros_distro,
                                         rmw_implementation: this.rmw_implementation,
                                         git_sha: this.git_sha,
@@ -486,68 +507,78 @@ export class Robot {
 
         // log into gsq
         if (gosquared) {
-            const bridge_server_title = public_bridge_address.replace('https://', '').replace('http://', '').replace('/', '');
-            const ip_to_log = this.socket.handshake.address.replace('::ffff:', '').replace(':', '').trim();
-            const version = this.git_sha ? this.git_sha.slice(0, 7) : 'n/a';
-            const user_agent = 'Phntm Client/'+version+' (ROS2; '+this.ros_distro+') '+this.rmw_implementation+'';
-            try {
-                const response_pv = await fetch('https://api.gosquared.com/tracking/v1/pageview?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': user_agent
-                    },
-                    body: JSON.stringify({
-                        'visitor_id': this.id.toHexString(),
-                        'user_agent': user_agent,
-                        'returning': true,
-                        'ip': ip_to_log,
-                        'page': {
-                            'url': public_bridge_address,
-                            'title': '[Robot API @ ' + bridge_server_title + ']'
-                        }
-                    })
-                });
-                const response_pv_rata:any = await response_pv.json();
-                if (!response_pv_rata.success) {
-                    $d.err('Got error from GSQ "pageview" event: ', response_pv_rata);
-                } else {
-                    this.log_ping_page_index = response_pv_rata.index;
-                    this.log_ping_timer = setTimeout(async () => { await this.logPing(gosquared ) }, Robot.LOG_PING_DELAY);
-                }
-                
-                const response_id = await fetch('https://api.gosquared.com/tracking/v1/properties?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': user_agent
-                    },
-                    body: JSON.stringify({
-                        'visitor_id': this.id.toHexString(),
-                        'person_id': this.id.toHexString(),
-                        'properties': {
-                            'name': this.name + ' @ ' + this.ros_distro + '/' + version + '',
-                            'custom': {
-                                'ros_distro': this.ros_distro,
-                                'client_version': version,
-                                'rmw_implementation': this.rmw_implementation,
-                                'maintainer': this.maintainer_email
-                            }
-                        }
-                    })
-                });
-                const response_id_rata:any = await response_id.json();
-                if (!response_id_rata.success) {
-                    $d.err('Got error from GSQ "identify" event: ', response_id_rata);
-                }
-
-            } catch (error:any) {
-                 $d.err('Got exception during GSQ logging: ', error);
-            }
+            await this.gsqLog(gosquared);
         }
     }
 
-    public async logPing(gosquared:any) {
+    public async gsqLog(gosquared:any) {
+        const bridge_server_title = gosquared.public_bridge_address.replace('https://', '').replace('http://', '').replace('/', '');
+        const ip_to_log = this.socket.handshake.address.replace('::ffff:', '').replace(':', '').trim();
+        const version = this.git_sha ? this.git_sha.slice(0, 7) : 'n/a';
+        const user_agent = 'Phntm Client/'+version+' (ROS2; '+this.ros_distro+') '+this.rmw_implementation+'';
+        try {
+            
+            // log page view
+            const response_pv = await fetch('https://api.gosquared.com/tracking/v1/pageview?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': user_agent
+                },
+                body: JSON.stringify({
+                    'visitor_id': this.id.toHexString(),
+                    'user_agent': user_agent,
+                    'returning': true,
+                    'ip': ip_to_log,
+                    'page': {
+                        'url': gosquared.public_bridge_address,
+                        'title': '[Robot API @ ' + bridge_server_title + ']'
+                    }
+                })
+            });
+            const response_pv_rata:any = await response_pv.json();
+            if (!response_pv_rata.success) {
+                $d.err('Got error from GSQ "pageview" event: ', response_pv_rata);
+                // retry in a bit
+                this.log_ping_timer = setTimeout(async () => { await this.gsqLog(gosquared ) }, Robot.LOG_PING_DELAY);
+            } else {
+                // start pinging every 20s (30s max timeout)
+                this.log_ping_page_index = response_pv_rata.index;
+                this.log_ping_timer = setTimeout(async () => { await this.gsqLogPing(gosquared ) }, Robot.LOG_PING_DELAY);
+            }
+            
+            // identify the robot (after pv)
+            const response_id = await fetch('https://api.gosquared.com/tracking/v1/properties?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': user_agent
+                },
+                body: JSON.stringify({
+                    'visitor_id': this.id.toHexString(),
+                    'person_id': this.id.toHexString(),
+                    'properties': {
+                        'name': this.name + ' @ ' + this.ros_distro + '/' + version + '',
+                        'custom': {
+                            'ros_distro': this.ros_distro,
+                            'client_version': version,
+                            'rmw_implementation': this.rmw_implementation,
+                            'maintainer': this.maintainer_email
+                        }
+                    }
+                })
+            });
+            const response_id_rata:any = await response_id.json();
+            if (!response_id_rata.success) {
+                $d.err('Got error from GSQ "identify" event: ', response_id_rata);
+            }
+
+        } catch (error:any) {
+                $d.err('Got exception during GSQ logging: ', error);
+        }
+    }
+
+    public async gsqLogPing(gosquared:any) {
         const response_id = await fetch('https://api.gosquared.com/tracking/v1/ping?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json'},
@@ -560,9 +591,13 @@ export class Robot {
         });
         const response_id_rata:any = await response_id.json();
         if (!response_id_rata.success) {
-            $d.err('Got error from GSQ "ping" event: ', response_id_rata);
+            if (response_id_rata && response_id_rata['code'] == 'max_inactive_time')
+                 $d.log('Got GSQ "max_inactive_time" event, restarting.');
+            else
+                $d.err('Got error from GSQ "ping" event: ', response_id_rata);
+            this.log_ping_timer = setTimeout(async () => { await this.gsqLog(gosquared) }, 100); // re-log view to restart logging session
         } else {
-            this.log_ping_timer = setTimeout(async () => { await this.logPing(gosquared ) }, Robot.LOG_PING_DELAY);
+            this.log_ping_timer = setTimeout(async () => { await this.gsqLogPing(gosquared) }, Robot.LOG_PING_DELAY);
         }
     }
 

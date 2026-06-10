@@ -110,8 +110,9 @@ const GS_SITE_TOKEN:string = CONFIG['BRIDGE'].gsSiteToken;
 let GSQ:any|null = null; 
 if (GS_API_KEY && GS_SITE_TOKEN) {
     GSQ = {
-        site_token: GS_SITE_TOKEN,
-        api_key: GS_API_KEY // https://www.gosquared.com/settings/api
+        'site_token': GS_SITE_TOKEN,
+        'api_key': GS_API_KEY, // https://www.gosquared.com/settings/api
+        'public_bridge_address': PUBLIC_BRIDGE_ADDRESS
     };
 }
 
@@ -662,7 +663,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         finishConnect();
     }
 
-    await robot.logConnect(robots_collection, robot_logs_collection, PUBLIC_BRIDGE_ADDRESS, GSQ);
+    await robot.logConnect(robots_collection, robot_logs_collection, GSQ);
 
     robot_socket.on('peer:update', async function(update_data:any, return_callback:any) {
 
@@ -833,6 +834,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
             robot.ip = null;
             robot.removeFromConnected(!shutting_down);
         });
+        robot.clearEditedFiles();
     });
 
     robot_socket.on('disconnecting', (reason:any) => {
@@ -1423,6 +1425,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                     let dae_content_changed = false;
 
                     const finishDaeEditing = function() {
+                        delete robot.edited_files_in_the_fly[path_cache]; // do not gc
+
                         if (!dae_content_changed)
                             return;
                         fs.writeFileSync(path_cache, dae_content, 'utf-8');
@@ -1447,6 +1451,9 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                                 if (sources_to_replace[src_to_replace])
                                     return; // skip duplicates
                                 sources_to_replace[src_to_replace] = true;
+
+                                if (!robot.edited_files_in_the_fly[path_cache]) // gc the file on robot disconnect if not finished 
+                                    robot.edited_files_in_the_fly[path_cache] = true;
 
                                 let src_to_request = src_to_replace;
                                 if (!src_to_replace.startsWith('package:/') && !src_to_replace.startsWith('file:/') && !src_to_replace.startsWith('/')) {
