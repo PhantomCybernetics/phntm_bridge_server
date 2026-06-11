@@ -69,7 +69,6 @@ export class Robot {
     static LOG_EVENT_ERR: number = -1;
 
     extracting_files_in_the_fly: { [ path: string]: any[] } = {};
-    edited_files_in_the_fly: { [ path: string]: boolean } = {};
 
     introspection: boolean;
 
@@ -111,7 +110,6 @@ export class Robot {
         this.verbose_input_locks = verbose_input_locks;
         this.input_topic_locks = {};
         this.extracting_files_in_the_fly = {};
-        this.edited_files_in_the_fly = {};
         this.log_ping_timer = null;
         this.log_ping_page_index = -1;
     }
@@ -261,25 +259,7 @@ export class Robot {
         }
     }
 
-    // delete unfinished DAE files waiting for sources
-    // so that we can re-fetch and process them again on new request
-    public clearEditedFiles() : void {
-        let paths = Object.keys(this.edited_files_in_the_fly);
-        paths.forEach((cache_path:string)=>{
-            try {
-                fs.unlink(cache_path, (err:any) => {
-                    if (err)
-                        $d.e('Error deleting incomplete robot file '+cache_path, err);
-                    else
-                        $d.l('Deleted incomplete robot file '+cache_path);
-                });
-            } catch (err) {
-                $d.e('Error deleting incomplete robot file '+cache_path, err);
-            }
-        });
-        this.edited_files_in_the_fly = {};
-    }
-
+    
     public getStateData(data:any=null) : any {
         if (!data || typeof data !== 'object')
             data = {};

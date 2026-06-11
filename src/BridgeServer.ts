@@ -834,7 +834,6 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
             robot.ip = null;
             robot.removeFromConnected(!shutting_down);
         });
-        robot.clearEditedFiles();
     });
 
     robot_socket.on('disconnecting', (reason:any) => {
@@ -1425,8 +1424,6 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                     let dae_content_changed = false;
 
                     const finishDaeEditing = function() {
-                        delete robot.edited_files_in_the_fly[path_cache]; // do not gc
-
                         if (!dae_content_changed)
                             return;
                         fs.writeFileSync(path_cache, dae_content, 'utf-8');
@@ -1452,8 +1449,15 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                                     return; // skip duplicates
                                 sources_to_replace[src_to_replace] = true;
 
-                                if (!robot.edited_files_in_the_fly[path_cache]) // gc the file on robot disconnect if not finished 
-                                    robot.edited_files_in_the_fly[path_cache] = true;
+                                // remove the file from disk so that it isn't served until saved with replacements
+                                try {
+                                    if (fs.existsSync(path_cache)) {
+                                        fs.unlink(path_cache, (err:any) => {
+                                            if (err)
+                                                $d.e('Error temporarily removing file '+path_cache + ' from cache', err);
+                                        });
+                                    }
+                                } catch (err) { }
 
                                 let src_to_request = src_to_replace;
                                 if (!src_to_replace.startsWith('package:/') && !src_to_replace.startsWith('file:/') && !src_to_replace.startsWith('/')) {
