@@ -540,6 +540,7 @@ export class Robot {
                     'properties': {
                         'name': this.name + ' @ ' + this.ros_distro + '/' + version + '',
                         'custom': {
+                            'id_robot': this.id.toHexString(),
                             'ros_distro': this.ros_distro,
                             'client_version': version,
                             'rmw_implementation': this.rmw_implementation,
