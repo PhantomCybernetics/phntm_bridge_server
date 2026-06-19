@@ -709,8 +709,10 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
 
     robot_socket.on('idls', async function(idls:any[]) {
 
-        if (!robot.is_authentificated || !robot.is_connected)
+        if (!robot.is_authentificated || !robot.is_connected) {
+            $d.l('Got idls from '+robot+' but robot init not complete');
             return;
+        }
 
         let msg_types:string[] = Object.keys(idls);
         if (VERBOSE_DEFS)
@@ -718,9 +720,7 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         else
             $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types');
 
-        robot.idls = idls;
-
-        robot.processIdls(VERBOSE_DEFS, ()=>{ //on complete
+        robot.processIdls(idls, VERBOSE_DEFS, ()=>{ //on complete
             robot.msgDefsToSubscribers(VERBOSE_DEFS);
         });
     });

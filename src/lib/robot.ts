@@ -45,7 +45,6 @@ export class Robot {
     socket: RobotSocket;
     time_connected:Date;
 
-    idls: any = {}; // message defs in .idl fomrat extracted from the robot
     msg_defs: any = {}; // processed js msg definitions 
     nodes: any[];
     topics: any[];
@@ -241,8 +240,7 @@ export class Robot {
     }
 
     public removeFromConnected(notify:boolean = true) : void {
-        this.idls = []; // reset until fresh idls are provided
-        this.msg_defs = [];
+        this.msg_defs = {}; // reset until fresh idls are provided
         let index = Robot.connected_robots.indexOf(this);
         if (index != -1) {
             Robot.connected_robots.splice(index, 1);
@@ -285,20 +283,20 @@ export class Robot {
         return data;
     }
 
-    public processIdls(verbose:boolean, complete_callback?:any) : void {
+    public processIdls(idls:any, verbose:boolean, complete_callback?:any) : void {
 
-        let msg_types:string[] = Object.keys(this.idls);
+        let msg_types:string[] = Object.keys(idls);
         // let all_msg_defs:any[] = [];
         let numProcessed = 0;
         msg_types.forEach((msg_type:string)=>{
-            let idl:string = this.idls[msg_type];
+            let idl:string = idls[msg_type];
             let defs:MessageDefinition[] = [];
             try {
                 defs = parseRos2idl(idl); // for ROS 2 definitions
             } catch (e) {
                 $d.e('Exception while processing idl for '+msg_type+'; ignoring');
                 if (verbose) {
-                    $d.l(this.idls[msg_type]);
+                    $d.l(idls[msg_type]);
                 }
                 return;
             }
