@@ -144,16 +144,19 @@ let robots_collection:Collection;
 let robot_logs_collection:Collection;
 let apps_collection:Collection;
 
+// 8080
 const register_express = express();
 const register_http_server = USE_HTTPS ?
                              https.createServer(REGISTER_HTTPS_SERVER_OPTIONS, register_express) :
                              http.createServer(register_express);
 
+// 1337
 const bridge_express = express();
 const bridge_http_server = USE_HTTPS ?
                            https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, bridge_express) :
                            http.createServer(bridge_express);
 
+// 1338
 const files_express = express();
 const files_http_server = USE_HTTPS ?
                           https.createServer(BRIDGE_HTTPS_SERVER_OPTIONS, files_express) :
@@ -243,7 +246,7 @@ function auth_admin(req:any) {
 }
 
 files_express.all('*', (req:any, res:any) => {
-  console.log('Unhandled URL:', req.originalUrl);
+  $d.e('[FilesFW]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
   res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
@@ -358,6 +361,7 @@ bridge_express.get('/info', function(req: any, res: any) {
             'rmw_implementation': Robot.connected_robots[i].rmw_implementation,
             'git_sha': Robot.connected_robots[i].git_sha,
             'git_tag': Robot.connected_robots[i].git_tag,
+            'msg_defs': Object.keys(Robot.connected_robots[i].msg_defs).length,
             'ui': ui_url,
             'ip': Robot.connected_robots[i].socket.handshake.address,
             'peers': peers_subscribed_to_robot[id_robot] ? peers_subscribed_to_robot[id_robot] : []
@@ -368,6 +372,11 @@ bridge_express.get('/info', function(req: any, res: any) {
     info_data['peer_apps'] = peerAppsData;
 
     res.send(JSON.stringify(info_data, null, 4));
+});
+
+bridge_express.all('*', (req:any, res:any) => {
+  $d.e('[Bridge]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
+  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
 register_express.use(express.urlencoded({ extended: true }));
@@ -519,7 +528,7 @@ register_express.post('/locate', async function(req:express.Request, res:express
 
 
 register_express.all('*', (req:any, res:any) => {
-  console.log('Unhandled URL:', req.originalUrl);
+  $d.e('[Reg]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
   res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
@@ -641,9 +650,12 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
                 }
             })
         });
-        const responseData:any = await response.json();
-        if (!responseData.success) {
-            $d.err('Got error from GSQ "activate" event: ', responseData);
+        try {
+            const response_data:any = await response.json();
+            if (!response_data || !response_data.success)
+                $d.err('Got error from GSQ "activate" event: ', response_data);
+        } catch (e) {
+            $d.err('Failed parsing GSQ "activate" response: ', response, e);
         }
     }
 
@@ -830,9 +842,9 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         robot.is_connected = false;
         robot.topics = [];
         robot.services = [];
+        robot.removeFromConnected(!shutting_down);
         await robot.logDisconnect(robots_collection, robot_logs_collection, disconnect_event, GSQ, () => {
             robot.ip = null;
-            robot.removeFromConnected(!shutting_down);
         });
     });
 
@@ -1429,97 +1441,101 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
                         fs.writeFileSync(path_cache, dae_content, 'utf-8');
                         $d.l(path_cache+' updated after DAE changes');
                     }
+                    
+                    try {
+                        const xml_parser = new XMLParser();
+                        const dae_obj = xml_parser.parse(dae_content);
+                        if (dae_obj.COLLADA?.library_images?.image) {
+                            const images = Array.isArray(dae_obj.COLLADA.library_images.image) 
+                                        ? dae_obj.COLLADA.library_images.image 
+                                        : [ dae_obj.COLLADA.library_images.image ];
 
-                    const xml_parser = new XMLParser();
-                    const dae_obj = xml_parser.parse(dae_content);
-                    if (dae_obj.COLLADA?.library_images?.image) {
-                        const images = Array.isArray(dae_obj.COLLADA.library_images.image) 
-                                     ? dae_obj.COLLADA.library_images.image 
-                                     : [ dae_obj.COLLADA.library_images.image ];
+                            let sources_to_replace:any = {};
+                            images.forEach((img:any) => {
+                                if (img.init_from && !img.init_from.hex) { // ignore embedded hex data
+                                    let src_to_replace = img.init_from;
+                                    $d.l('Found source to replace in DAE: "' + src_to_replace + '"');
+                                    if (src_to_replace.startsWith('http:/') || src_to_replace.startsWith('https:/'))
+                                        return; // keep source as is
+                                    
+                                    if (sources_to_replace[src_to_replace])
+                                        return; // skip duplicates
+                                    sources_to_replace[src_to_replace] = true;
 
-                        let sources_to_replace:any = {};
-                        images.forEach((img:any) => {
-                            if (img.init_from && !img.init_from.hex) { // ignore embedded hex data
-                                let src_to_replace = img.init_from;
-                                $d.l('Found source to replace in DAE: "' + src_to_replace + '"');
-                                if (src_to_replace.startsWith('http:/') || src_to_replace.startsWith('https:/'))
-                                    return; // keep source as is
-                                
-                                if (sources_to_replace[src_to_replace])
-                                    return; // skip duplicates
-                                sources_to_replace[src_to_replace] = true;
-
-                                // remove the file from disk so that it isn't served until saved with replacements
-                                try {
-                                    if (fs.existsSync(path_cache)) {
-                                        fs.unlink(path_cache, (err:any) => {
-                                            if (err)
-                                                $d.e('Error temporarily removing file '+path_cache + ' from cache', err);
-                                        });
-                                    }
-                                } catch (err) { }
-
-                                let src_to_request = src_to_replace;
-                                if (!src_to_replace.startsWith('package:/') && !src_to_replace.startsWith('file:/') && !src_to_replace.startsWith('/')) {
-                                    // resolve path
-                                    const base = data.path.slice(0, data.path.lastIndexOf('/')+1);
-                                    src_to_request = base + src_to_replace;
-                                }
-
-                                $d.l('Requesting extraction for DAE source: "' + src_to_request + '"');
-                                
-                                waiting_for_dae_sources = true;
-                                robot.socket.emit('file', src_to_request, async (src_robot_res:any) => {
-
-                                    if (!src_robot_res || src_robot_res.err || !src_robot_res.fileName) {
-                                        $d.e(robot + ' returned error for DAE source... ', src_robot_res);
-                                        extra_err_msgs[img.init_from] = {};
-                                        if (src_robot_res.msg)
-                                            extra_err_msgs[img.init_from]['msg'] = src_robot_res.msg;
-                                        else
-                                            extra_err_msgs[img.init_from]['msg'] = "Error fetching embedded resource";
-                                        if (src_robot_res.msgs)
-                                            extra_err_msgs[img.init_from]['msgs'] = src_robot_res.msgs;
-
-                                        delete sources_to_replace[src_to_replace];
-                                        if (!Object.keys(sources_to_replace).length) {
-                                            finishDaeEditing();
-                                            finishRequest();
-                                        }
-                                        return;
-                                    }
-
-                                    $d.l((robot + ' uploaded src file '+src_robot_res.fileName).cyan);
-
-                                    let src_path_cache = FILES_CACHE_DIR+'/'+robot.id.toString()+'/'+src_robot_res.fileName;;
+                                    // remove the file from disk so that it isn't served until saved with replacements
                                     try {
-                                        
-                                        await fs.promises.access(src_path_cache, fs.constants.R_OK);
-
-                                        // only use genrated filename, the base url used when fetching is the same as the DAE itself
-                                        dae_content = dae_content.replaceAll(img.init_from, src_robot_res.fileName); 
-                                        dae_content_changed = true;
-
-                                        delete sources_to_replace[src_to_replace];
-                                        if (!Object.keys(sources_to_replace).length) {
-                                            finishDaeEditing();
-                                            finishRequest();
+                                        if (fs.existsSync(path_cache)) {
+                                            fs.unlink(path_cache, (err:any) => {
+                                                if (err)
+                                                    $d.e('Error temporarily removing file '+path_cache + ' from cache', err);
+                                            });
                                         }
-                                    } catch (err) {
-                                        $d.l(src_robot_res.fileName+' not found in server cache');
-                                        extra_err_msgs[img.init_from] = {
-                                            "msg": "File not found in server cache"
-                                        };
-                                        delete sources_to_replace[src_to_replace];
-                                        if (!Object.keys(sources_to_replace).length) {
-                                            finishDaeEditing();
-                                            finishRequest();
-                                        }
+                                    } catch (err) { }
+
+                                    let src_to_request = src_to_replace;
+                                    if (!src_to_replace.startsWith('package:/') && !src_to_replace.startsWith('file:/') && !src_to_replace.startsWith('/')) {
+                                        // resolve path
+                                        const base = data.path.slice(0, data.path.lastIndexOf('/')+1);
+                                        src_to_request = base + src_to_replace;
                                     }
 
-                                });
-                            }
-                        });
+                                    $d.l('Requesting extraction for DAE source: "' + src_to_request + '"');
+                                    
+                                    waiting_for_dae_sources = true;
+                                    robot.socket.emit('file', src_to_request, async (src_robot_res:any) => {
+
+                                        if (!src_robot_res || src_robot_res.err || !src_robot_res.fileName) {
+                                            $d.e(robot + ' returned error for DAE source... ', src_robot_res);
+                                            extra_err_msgs[img.init_from] = {};
+                                            if (src_robot_res.msg)
+                                                extra_err_msgs[img.init_from]['msg'] = src_robot_res.msg;
+                                            else
+                                                extra_err_msgs[img.init_from]['msg'] = "Error fetching embedded resource";
+                                            if (src_robot_res.msgs)
+                                                extra_err_msgs[img.init_from]['msgs'] = src_robot_res.msgs;
+
+                                            delete sources_to_replace[src_to_replace];
+                                            if (!Object.keys(sources_to_replace).length) {
+                                                finishDaeEditing();
+                                                finishRequest();
+                                            }
+                                            return;
+                                        }
+
+                                        $d.l((robot + ' uploaded src file '+src_robot_res.fileName).cyan);
+
+                                        let src_path_cache = FILES_CACHE_DIR+'/'+robot.id.toString()+'/'+src_robot_res.fileName;;
+                                        try {
+                                            
+                                            await fs.promises.access(src_path_cache, fs.constants.R_OK);
+
+                                            // only use genrated filename, the base url used when fetching is the same as the DAE itself
+                                            dae_content = dae_content.replaceAll(img.init_from, src_robot_res.fileName); 
+                                            dae_content_changed = true;
+
+                                            delete sources_to_replace[src_to_replace];
+                                            if (!Object.keys(sources_to_replace).length) {
+                                                finishDaeEditing();
+                                                finishRequest();
+                                            }
+                                        } catch (err) {
+                                            $d.l(src_robot_res.fileName+' not found in server cache');
+                                            extra_err_msgs[img.init_from] = {
+                                                "msg": "File not found in server cache"
+                                            };
+                                            delete sources_to_replace[src_to_replace];
+                                            if (!Object.keys(sources_to_replace).length) {
+                                                finishDaeEditing();
+                                                finishRequest();
+                                            }
+                                        }
+
+                                    });
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        $d.e('Failed parsing DAE file '+path_cache, err);
                     }
                 } // dae end
 

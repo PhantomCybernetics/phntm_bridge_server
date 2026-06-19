@@ -253,7 +253,7 @@ export class Robot {
                         return;
 
                     peer_app.socket.emit('robot', that.getStateData()) // = robot offline
-                    peer_app.served_msg_defs = []; // reset
+                    peer_app.served_msg_defs = []; // reset peer
                 });
             }
         }
@@ -516,14 +516,20 @@ export class Robot {
                     }
                 })
             });
-            const response_pv_rata:any = await response_pv.json();
-            if (!response_pv_rata.success) {
-                $d.err('Got error from GSQ "pageview" event: ', response_pv_rata);
+            let response_pv_data:any = null;
+            try {
+                response_pv_data = await response_pv.json();
+            } catch (e) {
+                $d.err('Failed parsing GSQ "pw" response: ', response_pv, e);
+            }
+            if (!response_pv_data || !response_pv_data.success) {
+                $d.err('Got error from GSQ "pageview" event: ', response_pv_data);
                 // retry in a bit
                 this.log_ping_timer = setTimeout(async () => { await this.gsqLog(gosquared ) }, Robot.LOG_PING_DELAY);
+                return;
             } else {
                 // start pinging every 20s (30s max timeout)
-                this.log_ping_page_index = response_pv_rata.index;
+                this.log_ping_page_index = response_pv_data.index;
                 this.log_ping_timer = setTimeout(async () => { await this.gsqLogPing(gosquared ) }, Robot.LOG_PING_DELAY);
             }
             
@@ -549,9 +555,13 @@ export class Robot {
                     }
                 })
             });
-            const response_id_rata:any = await response_id.json();
-            if (!response_id_rata.success) {
-                $d.err('Got error from GSQ "identify" event: ', response_id_rata);
+            
+            try {
+                const response_id_data:any = await response_id.json();
+                if (!response_id_data || !response_id_data.success)
+                    $d.err('Got error from GSQ "identify" event: ', response_id_data);
+            } catch (e) {
+                $d.err('Failed parsing GSQ "identify" response: ', response_id, e);
             }
 
         } catch (error:any) {
@@ -560,7 +570,7 @@ export class Robot {
     }
 
     public async gsqLogPing(gosquared:any) {
-        const response_id = await fetch('https://api.gosquared.com/tracking/v1/ping?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+        const response_ping = await fetch('https://api.gosquared.com/tracking/v1/ping?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -570,12 +580,17 @@ export class Robot {
                 }
             })
         });
-        const response_id_rata:any = await response_id.json();
-        if (!response_id_rata.success) {
-            if (response_id_rata && response_id_rata['code'] == 'max_inactive_time')
+        let response_ping_data:any = null;
+        try {
+            response_ping_data = await response_ping.json();
+        } catch (e) {
+            $d.err('Failed parsing GSQ "ping" response: ', response_ping, e);
+        }
+        if (!response_ping_data || !response_ping_data.success) {
+            if (response_ping_data && response_ping_data['code'] == 'max_inactive_time')
                  $d.log('Got GSQ "max_inactive_time" event, restarting.');
             else
-                $d.err('Got error from GSQ "ping" event: ', response_id_rata);
+                $d.err('Got error from GSQ "ping" event: ', response_ping_data);
             this.log_ping_timer = setTimeout(async () => { await this.gsqLog(gosquared) }, 100); // re-log view to restart logging session
         } else {
             this.log_ping_timer = setTimeout(async () => { await this.gsqLogPing(gosquared) }, Robot.LOG_PING_DELAY);
@@ -590,7 +605,7 @@ export class Robot {
                 clearTimeout(this.log_ping_timer);
                 this.log_ping_timer = null;
             }
-            const response_id = await fetch('https://api.gosquared.com/tracking/v1/timeout?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
+            const response_timeout = await fetch('https://api.gosquared.com/tracking/v1/timeout?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -601,9 +616,12 @@ export class Robot {
                 })
             });
             this.log_ping_page_index = -1;
-            const response_id_rata:any = await response_id.json();
-            if (!response_id_rata.success) {
-                $d.err('Got error from GSQ "timeout" event: ', response_id_rata);
+            try {
+                const response_timeout_data:any = await response_timeout.json();
+                if (!response_timeout_data || !response_timeout_data.success)
+                    $d.err('Got error from GSQ "timeout" event: ', response_timeout_data);
+            } catch (e) {
+                $d.err('Failed parsing GSQ "timeout" response: ', response_timeout, e);
             }
         }
 
@@ -715,9 +733,13 @@ export class Robot {
                             }
                         })
                     });
-                    const response_rata:any = await response.json();
-                    if (!response_rata.success) {
-                        $d.err('Got error from GSQ "register" event: ', response_rata);
+                    try {
+                        const response_data:any = await response.json();
+                        if (!response_data || !response_data.success) {
+                            $d.err('Got error from GSQ "register" event: ', response_data);
+                        }
+                    } catch (e) {
+                         $d.err('Failed parsing GSQ "register" event response: ', response, e);
                     }
                 }
 
