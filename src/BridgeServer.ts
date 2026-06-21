@@ -178,6 +178,11 @@ files_express.get('/', async function(req:express.Request, res:express.Response)
     res.send(JSON.stringify({'file_forwarder': PUBLIC_BRIDGE_ADDRESS}, null, 4));
 });
 
+files_express.use('/static/', express.static('static/'));
+files_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
+    res.redirect("/static/favicons/favicon-orange-16x16.png");
+});
+
 async function serveFile(req:express.Request, res:express.Response) {
 
     if (!req.params.ID_ROBOT || !ObjectId.isValid(req.params.ID_ROBOT)) {
@@ -298,6 +303,11 @@ bridge_express.get('/', function(req: any, res: any) {
     }, null, 4));
 });
 
+bridge_express.use('/static/', express.static('static/'));
+bridge_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
+    res.redirect("/static/favicons/favicon-magenta-16x16.png");
+});
+
 // get server utilization info
 bridge_express.get('/info', function(req: any, res: any) {
 
@@ -390,6 +400,11 @@ register_express.get('/', async function(req:express.Request, res:express.Respon
     res.setHeader('Content-Type', 'application/json');
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4)); // useful for geo-balancing debugging 
+});
+
+register_express.use('/static/', express.static('static/'));
+register_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
+    res.redirect("/static/favicons/favicon-cyan-16x16.png");
 });
 
 // register a new robot, then forward to config
