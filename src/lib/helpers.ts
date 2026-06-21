@@ -131,3 +131,14 @@ export function FormatBytes(b: number, mib = false): string {
     return `0B`;
   }
 }
+
+export function URLNotCommonHackingAttempt(url:string):boolean {
+  if (!url)
+    return false;
+  return !(url.includes('php') ||
+           url.includes('.env') ||
+           url.includes('aspx') ||
+           url.includes('/api') ||
+           url.includes('.git')
+          );
+}

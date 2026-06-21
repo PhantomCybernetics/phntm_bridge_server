@@ -5,7 +5,7 @@ const $d:Debugger = Debugger.Get('Bridge Server');
 
 import { SESClient } from "@aws-sdk/client-ses";
 
-import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail_UI_Link, GetDomainName, GetRobotFilePublicUrl, ErrOutText } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail_UI_Link, GetDomainName, GetRobotFilePublicUrl, ErrOutText, URLNotCommonHackingAttempt } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -251,8 +251,9 @@ function auth_admin(req:any) {
 }
 
 files_express.all('*', (req:any, res:any) => {
-  $d.e('[FilesFW]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
-  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
+    if (URLNotCommonHackingAttempt(req.originalUrl))
+        $d.e('[FilesFW]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
+    res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
 function reject(res:any) {
@@ -385,8 +386,9 @@ bridge_express.get('/info', function(req: any, res: any) {
 });
 
 bridge_express.all('*', (req:any, res:any) => {
-  $d.e('[Bridge]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
-  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
+    if (URLNotCommonHackingAttempt(req.originalUrl))
+        $d.e('[Bridge]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
+    res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
 register_express.use(express.urlencoded({ extended: true }));
@@ -543,8 +545,9 @@ register_express.post('/locate', async function(req:express.Request, res:express
 
 
 register_express.all('*', (req:any, res:any) => {
-  $d.e('[Reg]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
-  res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
+    if (URLNotCommonHackingAttempt(req.originalUrl))
+        $d.e('[Reg]['+req.ip.replace('::ffff:','')+'] Unhandled URL: ' + req.originalUrl);
+    res.status(404).send(`Can't find ${req.originalUrl} on this server!`);
 });
 
 

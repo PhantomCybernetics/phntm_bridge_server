@@ -50,9 +50,9 @@ class Debugger {
     err (data: string, ...args: any[]) : void {
         let t = this.getTime();
         if (args.length > 0) {
-            console.log(`[${this.label} ${t}]`, data.red, args.length > 1 ? args : args[0]);
+            console.error(`[${this.label} ${t}]`, data.red, args.length > 1 ? args : args[0]);
         } else {
-            console.log(`[${this.label} ${t}]`, data.red);
+            console.error(`[${this.label} ${t}]`, data.red);
         }
     }
 }
