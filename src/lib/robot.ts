@@ -568,6 +568,10 @@ export class Robot {
     }
 
     public async gsqLogPing(gosquared:any) {
+
+        if (!this.is_connected)
+            return;
+        
         const response_ping = await fetch('https://api.gosquared.com/tracking/v1/ping?api_key='+gosquared.api_key+'&site_token='+gosquared.site_token, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json'},
