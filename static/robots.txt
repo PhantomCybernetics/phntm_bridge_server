@@ -1,0 +1,3 @@
+# Disallow all crawlers to reduce log junk
+User-agent: *
+Disallow: /

@@ -142,3 +142,13 @@ export function URLNotCommonHackingAttempt(url:string):boolean {
            url.includes('.git')
           );
 }
+
+export function SendFavicon(res: express.Response, favicon:string):void {
+  res.setHeader('Content-Type', 'image/png');
+  res.sendFile(path.join(__dirname, '..', '..', 'static/favicons', favicon));
+}
+
+export function SendFRobotsTxt(res: express.Response):void {
+  res.setHeader('Content-Type', 'text/plain');
+  res.sendFile(path.join(__dirname, '..', '..', 'static/robots.txt'));
+}

@@ -5,7 +5,7 @@ const $d:Debugger = Debugger.Get('Bridge Server');
 
 import { SESClient } from "@aws-sdk/client-ses";
 
-import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail_UI_Link, GetDomainName, GetRobotFilePublicUrl, ErrOutText, URLNotCommonHackingAttempt } from './lib/helpers'
+import { GetCerts, UncaughtExceptionHandler, GetCachedFileName, SendEmail_UI_Link, GetDomainName, GetRobotFilePublicUrl, ErrOutText, URLNotCommonHackingAttempt, SendFavicon, SendFRobotsTxt } from './lib/helpers'
 const bcrypt = require('bcrypt-nodejs');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -178,9 +178,12 @@ files_express.get('/', async function(req:express.Request, res:express.Response)
     res.send(JSON.stringify({'file_forwarder': PUBLIC_BRIDGE_ADDRESS}, null, 4));
 });
 
-files_express.use('/static/', express.static('static/'));
 files_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
-    res.redirect("/static/favicons/favicon-orange-16x16.png");
+    SendFavicon(res, 'favicon-orange-16x16.png');
+});
+
+files_express.get("/robots.txt", (req: express.Request, res: express.Response) => {
+    SendFRobotsTxt(res);
 });
 
 async function serveFile(req:express.Request, res:express.Response) {
@@ -304,9 +307,12 @@ bridge_express.get('/', function(req: any, res: any) {
     }, null, 4));
 });
 
-bridge_express.use('/static/', express.static('static/'));
 bridge_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
-    res.redirect("/static/favicons/favicon-magenta-16x16.png");
+    SendFavicon(res, 'favicon-magenta-16x16.png');
+});
+
+bridge_express.get("/robots.txt", (req: express.Request, res: express.Response) => {
+    SendFRobotsTxt(res);
 });
 
 // get server utilization info
@@ -404,9 +410,12 @@ register_express.get('/', async function(req:express.Request, res:express.Respon
     res.send(JSON.stringify({'bridge_server': PUBLIC_BRIDGE_ADDRESS}, null, 4)); // useful for geo-balancing debugging 
 });
 
-register_express.use('/static/', express.static('static/'));
 register_express.get("/favicon.ico", (req: express.Request, res: express.Response) => {
-    res.redirect("/static/favicons/favicon-cyan-16x16.png");
+    SendFavicon(res, 'favicon-cyan-16x16.png');
+});
+
+register_express.get("/robots.txt", (req: express.Request, res: express.Response) => {
+    SendFRobotsTxt(res);
 });
 
 // register a new robot, then forward to config
