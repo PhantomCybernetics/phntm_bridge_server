@@ -137,9 +137,48 @@ export function URLNotCommonHackingAttempt(url:string):boolean {
     return false;
   return !(url.includes('php') ||
            url.includes('.env') ||
+           url.includes('environ') ||
            url.includes('aspx') ||
            url.includes('/api') ||
-           url.includes('.git')
+           url.includes('.git') ||
+           url.includes('/aaa9') ||
+           url.includes('/aab9') ||
+           url.includes('/pdown') ||
+           url.includes('/containers/json') ||
+           url.includes('login') ||
+           url.includes('logon') ||
+           url.includes('auth') ||
+           url.includes('/owa') ||
+           url.includes('/font') ||
+           url.includes('.json') ||
+           url.includes('/autodiscover') ||
+           url.includes('/v1') ||
+           url.includes('/remote') ||
+           url.includes('/admin') ||
+           url.includes('.well-known') ||
+           url.includes('/version') ||
+           url.includes('/wiki') ||
+           url.includes('/actuator') ||
+           url.includes('/doc') ||
+           url.includes('/cgi-bin') ||
+           url.includes('/manage') ||
+           url.includes('/anthropic') ||
+           url.includes('/web') ||
+           url.includes('.aws') ||
+           url.includes('.npmrc') ||
+           url.includes('.kube') ||
+           url.includes('.gcp') ||
+           url.includes('.yarnrc') ||
+           url.includes('.ssh') ||
+           url.includes('.sql') ||
+           url.includes('.yml') ||
+           url.includes('.backup') ||
+           
+           // not hacking but still ignore:
+           url.includes('sitemap.xml') || 
+           url.includes('security.txt') ||
+           url.includes('ads.txt') ||
+           url.includes('index.html')
           );
 }
 
