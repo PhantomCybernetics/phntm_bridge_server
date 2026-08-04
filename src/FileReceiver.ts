@@ -165,7 +165,7 @@ app.post('/complete', express.json(), async (req:any, res:any) => {
         writeStream.end();
         await fs.remove(chunksDir);
         
-        res.json({ cachedfileName: cachedFileName });
+        res.json({ cachedFileName: cachedFileName });
 
       }).catch(()=>{
         res.status(403).json({ error: 'Invalid credentials provided' });
