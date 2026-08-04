@@ -686,8 +686,96 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
         }
     }
 
+    function processIdls(idls:any[]):void {
+        if (!robot.is_authentificated || !robot.is_connected) {
+            $d.l('Got idls from '+robot+' but robot init not complete');
+            return;
+        }
+        if (!idls) {
+            $d.l('Got empty idls from '+robot);
+            return;
+        }
+
+        let msg_types:string[] = Object.keys(idls);
+        if (VERBOSE_DEFS)
+            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types:', msg_types);
+        else
+            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types');
+
+        robot.processIdls(idls, VERBOSE_DEFS, ()=>{ //on complete
+            robot.msgDefsToSubscribers(VERBOSE_DEFS);
+        });
+    }
+
+    function processNodes(nodes:any) {
+        if (!robot.is_authentificated || !robot.is_connected) {
+            $d.l('Got nodes from '+robot+' but robot init not complete');
+            return;
+        }
+        if (!nodes) {
+            $d.l('Got empty nodes from '+robot);
+            return;
+        }
+
+        if (VERBOSE_NODES)
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot, nodes);
+        else
+            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot);
+
+        robot.nodes = nodes;
+        robot.nodesToSubscribers();
+    }
+
+    function processDocker(docker_updates:any[]) {
+        if (!robot.is_authentificated || !robot.is_connected) {
+            $d.l('Got docker update from '+robot+' but robot init not complete');
+            return;
+        }
+        if (!docker_updates) {
+            $d.l('Got empty docker updates from '+robot);
+            return;
+        }
+
+        if (VERBOSE_DOCKER)
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot, docker_updates);
+        else
+            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot);
+        robot.docker_containers = docker_updates;
+        robot.dockerContainersToSubscribers();
+    }
+
+    function processIntrospectionRunning(state:boolean) {
+        if (!robot.is_authentificated || !robot.is_connected) {
+            $d.l('Got introspection state from '+robot+' but robot init not complete');
+            return;
+        }
+        if (state === undefined) {
+            $d.l('Got empty introspection state from '+robot);
+            return;
+        }
+
+        $d.l("Got introspection state from " + robot + ": " + state);
+
+        robot.introspection = state;
+
+        robot.introspectionToSubscribers();
+    }
+
     function finishConnect():void {
-        robot_socket.emit('ice-servers', { servers: ICE_SERVERS, secret: robot_socket.db_data.ice_secret }); // push this before peer info
+
+        robot_socket.emit('ice-servers', {
+            'servers': ICE_SERVERS,
+            'secret': robot_socket.db_data.ice_secret
+        }, (introspection_data:any) => { // robot replies with introspection report
+
+            $d.l('Got initial introspection data from ' + robot);
+            processIdls(introspection_data['idls']);
+            processNodes(introspection_data['nodes']);
+            processDocker(introspection_data['docker']);
+            processIntrospectionRunning(introspection_data['introspection']);
+
+        }); // push this before peer info
+
         robot.addToConnected(); // sends update to subscribers and peers to the robot
     }
 
@@ -735,35 +823,11 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
     });
 
     robot_socket.on('idls', async function(idls:any[]) {
-
-        if (!robot.is_authentificated || !robot.is_connected) {
-            $d.l('Got idls from '+robot+' but robot init not complete');
-            return;
-        }
-
-        let msg_types:string[] = Object.keys(idls);
-        if (VERBOSE_DEFS)
-            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types:', msg_types);
-        else
-            $d.l('Got '+ msg_types.length+' idls from '+robot+' for msg_types');
-
-        robot.processIdls(idls, VERBOSE_DEFS, ()=>{ //on complete
-            robot.msgDefsToSubscribers(VERBOSE_DEFS);
-        });
+        processIdls(idls);
     });
 
     robot_socket.on('nodes', async function(nodes:any) {
-
-        if (!robot.is_authentificated || !robot.is_connected)
-            return;
-
-        if (VERBOSE_NODES)
-            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot, nodes);
-        else
-            $d.l('Got '+Object.keys(nodes).length+' nodes from '+robot);
-
-        robot.nodes = nodes;
-        robot.nodesToSubscribers();
+        processNodes(nodes);
     });
 
     robot_socket.on('topics', async function(topics:any[]) {
@@ -835,28 +899,11 @@ sio_robots.on('connect', async function(robot_socket : RobotSocket){
     });
 
     robot_socket.on('docker', async function(docker_updates:any[]) {
-
-        if (!robot.is_authentificated || !robot.is_connected)
-            return;
-
-        if (VERBOSE_DOCKER)
-            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot, docker_updates);
-        else
-            $d.l('Got Docker updates for '+Object.keys(docker_updates).length+' hosts from '+robot);
-        robot.docker_containers = docker_updates;
-        robot.dockerContainersToSubscribers();
+        processDocker(docker_updates);
     });
 
     robot_socket.on('introspection', async function(state:boolean) {
-
-        if (!robot.is_authentificated || !robot.is_connected)
-            return;
-
-        $d.l("Got introspection state from " + robot + ": " + state);
-
-        robot.introspection = state;
-
-        robot.introspectionToSubscribers();
+        processIntrospectionRunning(state);
     });
 
     /*
