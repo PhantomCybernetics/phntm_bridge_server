@@ -1347,7 +1347,7 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
         return true;
     });
 
-    peer_app_socket.on('robot-file-url', async function (data:{ id_robot:string, path:string}, return_callback) {
+    peer_app_socket.on('robot-file-url', async function (data:{ id_robot:string, path:string, use_cdn?:boolean}, return_callback) {
 
         $d.log(peer_app + ' requesting robot file url for :', data);
 
@@ -1381,6 +1381,8 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
             return false;
         }
 
+        let use_cdn = data.use_cdn !== undefined ? data.use_cdn : true;
+
         if (!FILES_CACHE_DIR)  {
             $d.e('Files chache dir not set');
             if (return_callback) {
@@ -1402,7 +1404,7 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
             $d.l(path_cache+' found in cache, last modified: ' + stats.mtime.toUTCString());
             if (return_callback) {
                 return_callback({
-                    'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, FILES_CDN_PREFIX) 
+                    'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, use_cdn ? FILES_CDN_PREFIX : null)
                 });
             }
             return true;
@@ -1483,7 +1485,7 @@ sio_peer_apps.on('connect', async function(peer_app_socket : PeerAppSocket){
 
                 const finishRequest = function (){
                     const stats = fs.statSync(path_cache);
-                    let res:any = { 'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, FILES_CDN_PREFIX) };
+                    let res:any = { 'url': GetRobotFilePublicUrl(fname_cache, stats.mtime, robot.id, PUBLIC_BRIDGE_ADDRESS, FILES_PORT, use_cdn ? FILES_CDN_PREFIX : null) };
                     if (Object.keys(extra_err_msgs).length) {
                         res['err'] = 3; // embedded resources error
                         res['msgs'] = extra_err_msgs;
