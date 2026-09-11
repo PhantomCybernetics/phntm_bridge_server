@@ -51,7 +51,7 @@
     ## Blacklisted services (not available in the UI)
     ## (srv_type or service id)
     # blacklist_services: 
-    #  - /phntm_agent/iw_scan
+    #  - /phntm_agent/wireless_scan
 
     encoder_hw_device_default: 'sw' # 'cuda' for Nvidia, 'vaapi' for AMD or Intel, 'sw' for CPU
 
@@ -75,8 +75,7 @@
     
     battery_topic: '' # battery to show in the UI (e.g. /battery), '' to disable
 
-    wifi_interface: '' # e.g. 'wlan0'
-    wifi_monitor_topic: '/iw_status' # WiFi monitor topic to show in the UI
+    net_interface: '' # e.g. 'wlan0', 'cdc-wdm0' (for GSM modems, use the control iface)
     enable_wifi_scan: True
     enable_wifi_roam: False
 
